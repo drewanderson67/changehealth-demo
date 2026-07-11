@@ -1,5 +1,13 @@
-import { useState, useEffect } from 'react';
-import type { ClaimSubmissionRequest, ServiceLine, ClaimResponse } from '../types/claims';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import type {
+  ClaimSubmissionRequest,
+  ServiceLine,
+  ClaimResponse,
+  Provider,
+  Subscriber,
+  Dependent,
+  ServiceFacilityLocation
+} from '../types/claims';
 import type { Environment } from '../types/eligibility';
 import { validateClaim, submitClaim, generateClaimPDF } from '../services/claimsApi';
 import { exportPayerList, parseCsvToPayers, type Payer } from '../services/api';
@@ -32,9 +40,30 @@ type ProviderOption = {
     postalCode: string;
   };
   phone?: string;
+  contactName?: string;
+  contactEmail?: string;
+  taxonomyCode?: string;
 };
 
 const PROVIDER_OPTIONS = providerOptionsData as ProviderOption[];
+const DEFAULT_TEST_TAXONOMY_CODE = '208D00000X';
+
+function getUniquePayers(payers: Payer[]): Payer[] {
+  const seenPayerIds = new Set<string>();
+
+  return payers.flatMap((payer) => {
+    const payerId = String(payer.payerId ?? '').trim();
+
+    // A payer without an ID cannot be selected, and duplicate IDs would create
+    // duplicate React keys and indistinguishable select options.
+    if (!payerId || seenPayerIds.has(payerId)) {
+      return [];
+    }
+
+    seenPayerIds.add(payerId);
+    return [{ ...payer, payerId }];
+  });
+}
 
 // US States for dropdown
 const US_STATES = [
@@ -159,30 +188,458 @@ function formatDateForInput(dateStr: string): string {
   return dateStr;
 }
 
+function createEmptyServiceLine(): ServiceLine {
+  return {
+    serviceDate: '',
+    serviceDateEnd: '',
+    professionalService: {
+      procedureIdentifier: 'HC',
+      procedureCode: '',
+      procedureModifiers: [],
+      lineItemChargeAmount: '',
+      measurementUnit: 'UN',
+      serviceUnitCount: '1',
+      placeOfServiceCode: '10',
+      compositeDiagnosisCodePointers: {
+        diagnosisCodePointers: []
+      }
+    }
+  };
+}
+
+function generateControlNumber(): string {
+  return String(Date.now() % 1_000_000_000).padStart(9, '0');
+}
+
+function normalizeControlNumber(value?: string): string {
+  const digits = (value || '').replace(/\D/g, '');
+  return digits ? digits.slice(-9).padStart(9, '0') : generateControlNumber();
+}
+
+function normalizeDiagnosisCode(value: string): string {
+  return value.toUpperCase().replace(/\./g, '').trim();
+}
+
+function diagnosisPointerForApi(value: string): string {
+  const normalized = value.trim().toUpperCase();
+  if (/^\d{1,2}$/.test(normalized)) return normalized;
+
+  const index = 'ABCDEFGHIJKL'.indexOf(normalized);
+  return index >= 0 ? String(index + 1) : normalized;
+}
+
+function diagnosisPointerForDisplay(value: string): string {
+  const normalized = value.trim().toUpperCase();
+  if (/^\d{1,2}$/.test(normalized)) {
+    const index = Number(normalized) - 1;
+    return 'ABCDEFGHIJKL'[index] || normalized;
+  }
+  return normalized;
+}
+
+function createInitialFormData(): Partial<ClaimSubmissionRequest> {
+  return {
+    controlNumber: generateControlNumber(),
+    subscriber: {
+      paymentResponsibilityLevelCode: 'P'
+    },
+    billing: {
+      taxIdType: 'EIN',
+      providerType: 'BillingProvider'
+    },
+    claimInformation: {
+      claimFilingCode: 'CI',
+      patientControlNumber: '',
+      claimChargeAmount: '0',
+      placeOfServiceCode: '10',
+      claimFrequencyCode: '1',
+      signatureIndicator: 'Y',
+      planParticipationCode: 'A',
+      benefitsAssignmentCertificationIndicator: 'Y',
+      releaseInformationCode: 'Y',
+      healthCareCodeInformation: [],
+      serviceLines: [createEmptyServiceLine()],
+      patientAmountPaid: '0',
+      outsideLab: false,
+      hasOtherHealthBenefitPlan: false
+    }
+  };
+}
+
+function normalizeSavedFormData(savedData: Partial<ClaimSubmissionRequest>): Partial<ClaimSubmissionRequest> {
+  const initial = createInitialFormData();
+  const savedClaimInformation = savedData.claimInformation;
+  const savedSubscriber = savedData.subscriber;
+  const selfDependent = savedData.dependent?.relationshipToSubscriberCode === ('18' as string)
+    ? savedData.dependent
+    : undefined;
+
+  return {
+    ...savedData,
+    controlNumber: normalizeControlNumber(savedData.controlNumber),
+    tradingPartnerName: savedData.tradingPartnerName || savedData.receiver?.organizationName,
+    subscriber: {
+      ...savedSubscriber,
+      ...(selfDependent ? {
+        firstName: selfDependent.firstName || savedSubscriber?.firstName,
+        lastName: selfDependent.lastName || savedSubscriber?.lastName,
+        middleName: selfDependent.middleName || savedSubscriber?.middleName,
+        gender: selfDependent.gender || savedSubscriber?.gender,
+        dateOfBirth: selfDependent.dateOfBirth || savedSubscriber?.dateOfBirth,
+        address: selfDependent.address || savedSubscriber?.address,
+        contactInformation: selfDependent.contactInformation || savedSubscriber?.contactInformation
+      } : {}),
+      paymentResponsibilityLevelCode: 'P'
+    },
+    dependent: selfDependent ? undefined : savedData.dependent,
+    billing: {
+      ...savedData.billing,
+      providerType: 'BillingProvider'
+    },
+    rendering: savedData.rendering ? {
+      ...savedData.rendering,
+      providerType: 'RenderingProvider'
+    } : undefined,
+    referring: savedData.referring ? {
+      ...savedData.referring,
+      providerType: 'ReferringProvider'
+    } : undefined,
+    claimInformation: {
+      ...initial.claimInformation,
+      ...savedClaimInformation,
+      claimFilingCode: 'CI',
+      claimFrequencyCode: savedClaimInformation?.claimFrequencyCode || '1',
+      planParticipationCode: savedClaimInformation?.planParticipationCode || 'A',
+      signatureIndicator: savedClaimInformation?.signatureIndicator || 'Y',
+      benefitsAssignmentCertificationIndicator: savedClaimInformation?.benefitsAssignmentCertificationIndicator || 'Y',
+      releaseInformationCode: savedClaimInformation?.releaseInformationCode || 'Y',
+      hasOtherHealthBenefitPlan: false,
+      serviceLines: savedClaimInformation?.serviceLines?.length
+        ? savedClaimInformation.serviceLines
+        : [createEmptyServiceLine()]
+    } as ClaimSubmissionRequest['claimInformation']
+  };
+}
+
+function hasProviderIdentity(provider?: Partial<Provider>): boolean {
+  return Boolean(
+    provider?.npi ||
+    provider?.organizationName ||
+    provider?.firstName ||
+    provider?.lastName ||
+    provider?.commercialNumber
+  );
+}
+
+function providerDisplayName(provider: Partial<Provider>): string {
+  return provider.organizationName || [provider.firstName, provider.middleName, provider.lastName]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+}
+
+interface BuildClaimOptions {
+  submitAsTest: boolean;
+  patientSignatureOnFile: boolean;
+  authorizedSignatureOnFile: boolean;
+  physicianSignatureOnFile: boolean;
+  selectedPayerName: string;
+}
+
+function buildPrimaryClaimRequest(
+  formData: Partial<ClaimSubmissionRequest>,
+  options: BuildClaimOptions
+): ClaimSubmissionRequest {
+  const errors: string[] = [];
+  const requireValue = (value: unknown, label: string) => {
+    if (value === undefined || value === null || String(value).trim() === '') {
+      errors.push(label);
+    }
+  };
+
+  const payerId = formData.tradingPartnerServiceId?.trim() || '';
+  const payerName = formData.tradingPartnerName?.trim()
+    || formData.receiver?.organizationName?.trim()
+    || options.selectedPayerName.trim();
+  requireValue(payerId, 'Payer ID');
+  requireValue(payerName, 'Payer name');
+
+  const requireDigits = (value: string | undefined, length: number, label: string) => {
+    if (value && !new RegExp(`^\\d{${length}}$`).test(value.replace(/\D/g, ''))) {
+      errors.push(`${label} (${length} digits)`);
+    }
+  };
+
+  const subscriberSource = formData.subscriber;
+  const subscriberName = [subscriberSource?.firstName, subscriberSource?.lastName].filter(Boolean).join(' ').trim();
+  requireValue(subscriberSource?.memberId, "Box 1a - Insured's ID");
+  requireValue(subscriberSource?.firstName, "Box 4 - Insured's first name");
+  requireValue(subscriberSource?.lastName, "Box 4 - Insured's last name");
+  requireValue(subscriberSource?.dateOfBirth, "Box 11a - Insured's date of birth");
+  requireValue(subscriberSource?.gender, "Box 11a - Insured's gender");
+  requireValue(subscriberSource?.address?.address1, "Box 7 - Insured's street address");
+  requireValue(subscriberSource?.address?.city, "Box 7 - Insured's city");
+  requireValue(subscriberSource?.address?.state, "Box 7 - Insured's state");
+  requireValue(subscriberSource?.address?.postalCode, "Box 7 - Insured's ZIP code");
+
+  const subscriber: Subscriber = {
+    ...subscriberSource,
+    paymentResponsibilityLevelCode: 'P',
+    memberId: subscriberSource?.memberId?.trim(),
+    firstName: subscriberSource?.firstName?.trim(),
+    lastName: subscriberSource?.lastName?.trim(),
+    dateOfBirth: formatDateForAPI(subscriberSource?.dateOfBirth || ''),
+    address: subscriberSource?.address ? { ...subscriberSource.address } : undefined,
+    contactInformation: subscriberSource?.contactInformation ? {
+      ...subscriberSource.contactInformation,
+      name: subscriberSource.contactInformation.name?.trim() || subscriberName || 'Subscriber'
+    } : undefined
+  };
+
+  let dependent: Dependent | undefined;
+  if (formData.dependent) {
+    const dependentSource = formData.dependent;
+    requireValue(dependentSource.firstName, "Box 2 - Patient's first name");
+    requireValue(dependentSource.lastName, "Box 2 - Patient's last name");
+    requireValue(dependentSource.dateOfBirth, "Box 3 - Patient's date of birth");
+    requireValue(dependentSource.gender, "Box 3 - Patient's gender");
+    requireValue(dependentSource.relationshipToSubscriberCode, 'Box 6 - Patient relationship');
+    requireValue(dependentSource.address?.address1, "Box 5 - Patient's street address");
+    requireValue(dependentSource.address?.city, "Box 5 - Patient's city");
+    requireValue(dependentSource.address?.state, "Box 5 - Patient's state");
+    requireValue(dependentSource.address?.postalCode, "Box 5 - Patient's ZIP code");
+
+    const dependentName = [dependentSource.firstName, dependentSource.lastName].filter(Boolean).join(' ').trim();
+    dependent = {
+      ...dependentSource,
+      firstName: dependentSource.firstName?.trim() || '',
+      lastName: dependentSource.lastName?.trim() || '',
+      dateOfBirth: formatDateForAPI(dependentSource.dateOfBirth),
+      address: dependentSource.address ? { ...dependentSource.address } : undefined,
+      contactInformation: dependentSource.contactInformation ? {
+        ...dependentSource.contactInformation,
+        name: dependentSource.contactInformation.name?.trim() || dependentName || 'Patient'
+      } : undefined
+    };
+  }
+
+  const billingSource = formData.billing;
+  const billingName = billingSource ? providerDisplayName(billingSource) : '';
+  const billingTaxIdType = billingSource?.taxIdType || (billingSource?.ssn ? 'SSN' : 'EIN');
+  const billingTaxId = billingTaxIdType === 'SSN' ? billingSource?.ssn : billingSource?.employerId;
+  requireValue(billingName, 'Box 33 - Billing provider name');
+  requireValue(billingSource?.npi, 'Box 33a - Billing provider NPI');
+  requireValue(billingTaxId, 'Box 25 - Federal tax ID');
+  requireValue(billingSource?.address?.address1, 'Box 33 - Billing provider street address');
+  requireValue(billingSource?.address?.city, 'Box 33 - Billing provider city');
+  requireValue(billingSource?.address?.state, 'Box 33 - Billing provider state');
+  requireValue(billingSource?.address?.postalCode, 'Box 33 - Billing provider ZIP code');
+  requireValue(billingSource?.contactInformation?.phoneNumber, 'Box 33 - Billing provider phone');
+  requireValue(billingSource?.contactInformation?.name, 'Box 33 - Billing contact name');
+  requireValue(billingSource?.taxonomyCode, 'Box 33 - Billing provider taxonomy code');
+  requireDigits(billingSource?.npi, 10, 'Box 33a - Billing provider NPI');
+  requireDigits(billingTaxId, 9, 'Box 25 - Federal tax ID');
+
+  const billing: Provider = {
+    ...billingSource,
+    providerType: 'BillingProvider',
+    taxIdType: billingTaxIdType,
+    organizationName: billingSource?.organizationName?.trim(),
+    npi: billingSource?.npi?.replace(/\D/g, ''),
+    employerId: billingTaxIdType === 'EIN' ? billingSource?.employerId?.replace(/\D/g, '') : undefined,
+    ssn: billingTaxIdType === 'SSN' ? billingSource?.ssn?.replace(/\D/g, '') : undefined,
+    address: billingSource?.address ? { ...billingSource.address } : undefined,
+    contactInformation: billingSource?.contactInformation ? {
+      ...billingSource.contactInformation,
+      name: billingSource.contactInformation.name?.trim() || billingName || 'Billing Contact'
+    } : undefined
+  };
+
+  const diagnoses = (formData.claimInformation?.healthCareCodeInformation || [])
+    .filter((diagnosis) => diagnosis.diagnosisCode?.trim())
+    .map((diagnosis, index) => ({
+      diagnosisTypeCode: index === 0 ? 'ABK' : 'ABF',
+      diagnosisCode: normalizeDiagnosisCode(diagnosis.diagnosisCode)
+    }));
+  if (diagnoses.length === 0) errors.push('Box 21 - At least one diagnosis code');
+
+  const serviceLines = (formData.claimInformation?.serviceLines || []).map((line, index) => {
+    const lineNumber = index + 1;
+    requireValue(line.serviceDate, `Box 24A - Service line ${lineNumber} date`);
+    requireValue(line.professionalService?.placeOfServiceCode || formData.claimInformation?.placeOfServiceCode, `Box 24B - Service line ${lineNumber} place of service`);
+    requireValue(line.professionalService?.procedureCode, `Box 24D - Service line ${lineNumber} procedure code`);
+    requireValue(line.professionalService?.lineItemChargeAmount, `Box 24F - Service line ${lineNumber} charge`);
+    requireValue(line.professionalService?.serviceUnitCount, `Box 24G - Service line ${lineNumber} units`);
+
+    const pointers = (line.professionalService?.compositeDiagnosisCodePointers?.diagnosisCodePointers || [])
+      .filter(Boolean)
+      .slice(0, 4)
+      .map(diagnosisPointerForApi);
+    if (pointers.length === 0) errors.push(`Box 24E - Service line ${lineNumber} diagnosis pointer`);
+    if (pointers.some((pointer) => !/^\d{1,2}$/.test(pointer) || Number(pointer) < 1 || Number(pointer) > diagnoses.length)) {
+      errors.push(`Box 24E - Service line ${lineNumber} diagnosis pointer must reference Box 21`);
+    }
+
+    let renderingProvider: Provider | undefined;
+    if (hasProviderIdentity(line.renderingProvider)) {
+      const renderingSource = line.renderingProvider!;
+      requireValue(renderingSource.npi, `Box 24J - Service line ${lineNumber} rendering NPI`);
+      requireValue(providerDisplayName(renderingSource), `Box 24J - Service line ${lineNumber} rendering provider name`);
+      requireDigits(renderingSource.npi, 10, `Box 24J - Service line ${lineNumber} rendering NPI`);
+      renderingProvider = {
+        ...renderingSource,
+        providerType: 'RenderingProvider',
+        npi: renderingSource.npi?.replace(/\D/g, '')
+      };
+    }
+
+    return {
+      ...line,
+      serviceDate: formatDateForAPI(line.serviceDate),
+      serviceDateEnd: line.serviceDateEnd ? formatDateForAPI(line.serviceDateEnd) : undefined,
+      professionalService: {
+        ...line.professionalService,
+        procedureIdentifier: line.professionalService?.procedureIdentifier || 'HC',
+        procedureCode: line.professionalService?.procedureCode?.trim().toUpperCase() || '',
+        procedureModifiers: line.professionalService?.procedureModifiers?.filter(Boolean).slice(0, 4),
+        lineItemChargeAmount: formatCurrency(line.professionalService?.lineItemChargeAmount || ''),
+        measurementUnit: line.professionalService?.measurementUnit || 'UN',
+        serviceUnitCount: line.professionalService?.serviceUnitCount || '',
+        placeOfServiceCode: line.professionalService?.placeOfServiceCode || formData.claimInformation?.placeOfServiceCode,
+        compositeDiagnosisCodePointers: {
+          diagnosisCodePointers: pointers
+        }
+      },
+      renderingProvider
+    } as ServiceLine;
+  });
+  if (serviceLines.length === 0) errors.push('Box 24 - At least one service line');
+
+  const patientControlNumber = formData.claimInformation?.patientControlNumber?.trim() || '';
+  requireValue(patientControlNumber, "Box 26 - Patient's account number");
+
+  let serviceFacilityLocation: ServiceFacilityLocation | undefined;
+  const facilitySource = formData.claimInformation?.serviceFacilityLocation;
+  if (facilitySource?.organizationName || facilitySource?.npi || facilitySource?.address?.address1) {
+    requireValue(facilitySource.organizationName, 'Box 32 - Service facility name');
+    requireValue(facilitySource.address?.address1, 'Box 32 - Service facility street address');
+    requireValue(facilitySource.address?.city, 'Box 32 - Service facility city');
+    requireValue(facilitySource.address?.state, 'Box 32 - Service facility state');
+    requireValue(facilitySource.address?.postalCode, 'Box 32 - Service facility ZIP code');
+    requireValue(facilitySource.npi, 'Box 32a - Service facility NPI');
+    requireDigits(facilitySource.npi, 10, 'Box 32a - Service facility NPI');
+    if (facilitySource.phoneNumber) {
+      requireValue(facilitySource.phoneName, 'Box 32 - Service facility contact name');
+    }
+    serviceFacilityLocation = {
+      ...facilitySource,
+      organizationName: facilitySource.organizationName || '',
+      address: facilitySource.address || { address1: '', city: '' },
+      npi: facilitySource.npi?.replace(/\D/g, '')
+    };
+  }
+
+  const claimSupplementalInformation = formData.claimInformation?.claimSupplementalInformation;
+  const claimFrequencyCode = formData.claimInformation?.claimFrequencyCode || '1';
+  if (claimFrequencyCode !== '1') {
+    requireValue(claimSupplementalInformation?.claimControlNumber, 'Box 22 - Original payer claim control number');
+  }
+
+  const submitterSource = formData.submitter;
+  const submitter = {
+    ...submitterSource,
+    organizationName: submitterSource?.organizationName || billingName,
+    contactInformation: {
+      ...submitterSource?.contactInformation,
+      name: submitterSource?.contactInformation?.name || billing.contactInformation?.name || billingName,
+      phoneNumber: submitterSource?.contactInformation?.phoneNumber || billing.contactInformation?.phoneNumber || ''
+    }
+  };
+
+  const rendering = hasProviderIdentity(formData.rendering) ? {
+    ...formData.rendering,
+    providerType: 'RenderingProvider' as const,
+    npi: formData.rendering?.npi?.replace(/\D/g, '')
+  } : undefined;
+  let referring: Provider | undefined;
+  if (hasProviderIdentity(formData.referring)) {
+    requireValue(providerDisplayName(formData.referring!), 'Box 17 - Referring provider name');
+    requireValue(formData.referring?.npi, 'Box 17b - Referring provider NPI');
+    requireDigits(formData.referring?.npi, 10, 'Box 17b - Referring provider NPI');
+    referring = {
+      ...formData.referring,
+      providerType: 'ReferringProvider',
+      npi: formData.referring?.npi?.replace(/\D/g, '')
+    };
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Please complete the required claim fields:\n- ${errors.join('\n- ')}`);
+  }
+
+  const totalChargeCents = (formData.claimInformation?.serviceLines || []).reduce((total, line) => {
+    const rawAmount = line.professionalService?.lineItemChargeAmount || '0';
+    return total + Number.parseInt(rawAmount.replace(/\D/g, '') || '0', 10);
+  }, 0);
+
+  const supplementalInformation = claimSupplementalInformation ? {
+    ...claimSupplementalInformation,
+    claimControlNumber: claimFrequencyCode === '1'
+      ? undefined
+      : claimSupplementalInformation.claimControlNumber?.trim()
+  } : undefined;
+  const hasSupplementalInformation = supplementalInformation
+    && Object.values(supplementalInformation).some((value) => value !== undefined && value !== '');
+
+  return {
+    controlNumber: normalizeControlNumber(formData.controlNumber),
+    tradingPartnerServiceId: payerId,
+    tradingPartnerName: payerName,
+    usageIndicator: options.submitAsTest ? 'T' : 'P',
+    submitter,
+    receiver: { organizationName: payerName },
+    subscriber,
+    ...(dependent ? { dependent } : {}),
+    billing,
+    ...(rendering ? { rendering } : {}),
+    ...(referring ? { referring } : {}),
+    claimInformation: {
+      claimFilingCode: 'CI',
+      patientControlNumber,
+      placeOfServiceCode: formData.claimInformation?.placeOfServiceCode || '10',
+      claimChargeAmount: formatCurrency(String(totalChargeCents)),
+      planParticipationCode: formData.claimInformation?.planParticipationCode || 'A',
+      claimFrequencyCode,
+      signatureIndicator: options.physicianSignatureOnFile ? 'Y' : 'N',
+      benefitsAssignmentCertificationIndicator: options.authorizedSignatureOnFile ? 'Y' : 'N',
+      releaseInformationCode: options.patientSignatureOnFile ? 'Y' : 'I',
+      patientAmountPaid: formatCurrency(formData.claimInformation?.patientAmountPaid || '0'),
+      ...(hasSupplementalInformation ? { claimSupplementalInformation: supplementalInformation } : {}),
+      ...(formData.claimInformation?.propertyCasualtyClaimNumber ? { propertyCasualtyClaimNumber: formData.claimInformation.propertyCasualtyClaimNumber } : {}),
+      ...(formData.claimInformation?.relatedCausesCode?.length ? { relatedCausesCode: formData.claimInformation.relatedCausesCode } : {}),
+      ...(formData.claimInformation?.autoAccidentStateCode ? { autoAccidentStateCode: formData.claimInformation.autoAccidentStateCode } : {}),
+      ...(formData.claimInformation?.claimDateInformation ? { claimDateInformation: formData.claimInformation.claimDateInformation } : {}),
+      ...(formData.claimInformation?.claimNote ? { claimNote: formData.claimInformation.claimNote } : {}),
+      ...(serviceFacilityLocation ? { serviceFacilityLocation } : {}),
+      healthCareCodeInformation: diagnoses,
+      serviceLines
+    }
+  };
+}
+
 export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
   // Load form data from localStorage or use defaults
   const [formData, setFormData] = useState<Partial<ClaimSubmissionRequest>>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_FORM_DATA);
     if (saved) {
       try {
-        return JSON.parse(saved);
-      } catch (e) {
+        return normalizeSavedFormData(JSON.parse(saved));
+      } catch {
         console.log('Failed to parse saved form data');
       }
     }
     
-    const initialData: Partial<ClaimSubmissionRequest> = {};
-    // Box 1: Set "Other" (CI) as default
-    initialData.claimInformation = {
-      claimFilingCode: 'CI',
-      outsideLab: false // Box 20: Set "No" as default
-    } as Partial<ClaimSubmissionRequest>['claimInformation'];
-    // Box 25: Set EIN as default
-    initialData.billing = {
-      taxIdType: 'EIN',
-      providerType: 'Organization' // Set default provider type
-    } as Partial<ClaimSubmissionRequest>['billing'];
-    return initialData;
+    return createInitialFormData();
   });
   
   // Usage indicator state (T=Test, P=Production)
@@ -219,10 +676,12 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
   const [payersApiRequest, setPayersApiRequest] = useState<{
     endpoint: string;
     method: string;
-    body: any;
+    body: unknown;
   } | null>(null);
-  const [payersApiResponse, setPayersApiResponse] = useState<any>(null);
+  const [payersApiResponse, setPayersApiResponse] = useState<Record<string, unknown> | null>(null);
   const [selectedPayerName, setSelectedPayerName] = useState<string>('');
+  const displayedPayers = useMemo(() => getUniquePayers(allPayers), [allPayers]);
+  const patientIsSubscriber = !formData.dependent;
 
   // Provider state
   const [selectedProviderOption, setSelectedProviderOption] = useState<string>(() => {
@@ -253,7 +712,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
   }, [selectedProviderOption]);
 
   // Load payers list function
-  const loadPayers = async (clearCache = false) => {
+  const loadPayers = useCallback(async (clearCache = false) => {
     const cacheKey = `${STORAGE_KEY_PAYERS}-${environment}`;
     const csvCacheKey = `${STORAGE_KEY_PAYERS_CSV}-${environment}`;
     
@@ -268,10 +727,18 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
           // Use cache if less than 24 hours old
           if (cacheAge < 24 * 60 * 60 * 1000) {
             console.log('Using cached payer list for claims (age:', Math.round(cacheAge / 1000 / 60), 'minutes)');
-            setAllPayers(cachedPayers.payers || []);
+            const payers = getUniquePayers(cachedPayers.payers || []);
+            setAllPayers(payers);
+
+            if (payers.length !== (cachedPayers.payers || []).length) {
+              localStorage.setItem(cacheKey, JSON.stringify({
+                ...cachedPayers,
+                payers
+              }));
+            }
             return;
           }
-        } catch (e) {
+        } catch {
           console.log('Failed to parse cached payers, fetching fresh list');
         }
       }
@@ -304,7 +771,8 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
         });
       }
       
-      const payers = parseCsvToPayers(exportResult.csv);
+      const parsedPayers = parseCsvToPayers(exportResult.csv);
+      const payers = getUniquePayers(parsedPayers);
       
       setAllPayers(payers);
       setPayersApiResponse({ 
@@ -322,14 +790,15 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
       console.log(`✅ Loaded ${payers.length} payers from CSV export for claims`);
       setPayersError(null);
       
-    } catch (error: any) {
-      console.error('Failed to export payers for claims:', error.message);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('Failed to export payers for claims:', errorMessage);
       
       let errorDetails;
       try {
-        errorDetails = JSON.parse(error.message);
+        errorDetails = JSON.parse(errorMessage);
       } catch {
-        errorDetails = { message: error.message };
+        errorDetails = { message: errorMessage };
       }
       
       if (errorDetails._optumApiRequest) {
@@ -340,16 +809,16 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
         });
       }
       
-      setPayersError(errorDetails.message || error.message);
+      setPayersError(errorDetails.message || errorMessage);
       setPayersApiResponse({ 
-        error: errorDetails.message || error.message,
+        error: errorDetails.message || errorMessage,
         details: errorDetails.details,
         statusCode: errorDetails.statusCode
       });
     } finally {
       setLoadingPayers(false);
     }
-  };
+  }, [environment]);
 
   // Handle provider dropdown change
   const handleProviderPresetChange = (value: string) => {
@@ -369,7 +838,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
         // Box 33 (Billing Provider) - use organizationName for submission
         newData.billing = {
           ...newData.billing,
-          providerType: 'Organization',
+          providerType: 'BillingProvider',
           organizationName: selectedOption.organizationName,
           npi: selectedOption.npi,
           employerId: selectedOption.ein || newData.billing?.employerId,
@@ -382,24 +851,27 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
           } : newData.billing?.address,
           contactInformation: {
             ...newData.billing?.contactInformation,
+            name: newData.billing?.contactInformation?.name || 'Billing Department',
             phoneNumber: selectedOption.phone || newData.billing?.contactInformation?.phoneNumber
           }
         };
         
         // Box 32 (Service Facility Location) - use organizationName for submission
-        if (!newData.claimInformation) {
-          newData.claimInformation = {} as any;
-        }
-        newData.claimInformation.serviceFacilityLocation = {
-          organizationName: selectedOption.organizationName,
-          npi: selectedOption.npi,
-          address: selectedOption.address ? {
-            address1: selectedOption.address.address1,
-            city: selectedOption.address.city,
-            state: selectedOption.address.state,
-            postalCode: selectedOption.address.postalCode
-          } : undefined
-        };
+        newData.claimInformation = {
+          ...newData.claimInformation,
+          serviceFacilityLocation: {
+            organizationName: selectedOption.organizationName,
+            npi: selectedOption.npi,
+            phoneName: selectedOption.contactName || 'Facility Contact',
+            phoneNumber: selectedOption.phone,
+            address: selectedOption.address ? {
+              address1: selectedOption.address.address1,
+              city: selectedOption.address.city,
+              state: selectedOption.address.state,
+              postalCode: selectedOption.address.postalCode
+            } : undefined
+          }
+        } as Partial<ClaimSubmissionRequest>['claimInformation'];
         
         return newData;
       });
@@ -407,7 +879,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
   };
 
   // Handle payer selection
-  const handlePayerChange = (payerId: string) => {
+  const handlePayerChange = useCallback((payerId: string) => {
     const selectedPayer = allPayers.find(p => p.payerId === payerId);
     
     setFormData((prev) => {
@@ -418,8 +890,10 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
       
       // Set receiver organization name from payer
       if (selectedPayer) {
+        const payerName = selectedPayer.payerPlanName || selectedPayer.payerId || '';
+        newData.tradingPartnerName = payerName;
         newData.receiver = {
-          organizationName: selectedPayer.payerPlanName || selectedPayer.payerId || ''
+          organizationName: payerName
         };
         setSelectedPayerName(selectedPayer.payerPlanName || '');
       }
@@ -430,12 +904,12 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
     // Save to localStorage
     const savedPayerKey = `${STORAGE_KEY_SELECTED_PAYER}-${environment}`;
     localStorage.setItem(savedPayerKey, payerId);
-  };
+  }, [allPayers, environment]);
 
   // Load payers on mount and when environment changes
   useEffect(() => {
     loadPayers();
-  }, [environment]);
+  }, [loadPayers]);
 
   // Load previously selected payer on mount
   useEffect(() => {
@@ -444,7 +918,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
     if (savedPayerId && formData.tradingPartnerServiceId !== savedPayerId) {
       handlePayerChange(savedPayerId);
     }
-  }, [environment, allPayers]);
+  }, [environment, formData.tradingPartnerServiceId, handlePayerChange]);
 
   // Clear response when environment changes (but keep form data)
   useEffect(() => {
@@ -477,101 +951,78 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.claimInformation?.serviceLines]);
 
-  // Auto-update Box 4 and Box 7 when Box 2 or Box 5 changes, if "Self" is selected in Box 6
-  useEffect(() => {
-    if (formData.dependent?.relationshipToSubscriberCode === '18') {
-      setFormData(prev => {
-        const newData = { ...prev };
-        
-        // Copy Box 2 (Patient's Name) to Box 4 (Insured's Name)
-        const patientLastName = formData.dependent?.lastName ?? '';
-        const patientFirstName = formData.dependent?.firstName ?? '';
-        const patientMiddleName = formData.dependent?.middleName ?? '';
-        
-        // Copy Box 5 (Patient's Address) to Box 7 (Insured's Address)
-        const patientAddress1 = formData.dependent?.address?.address1 ?? '';
-        const patientCity = formData.dependent?.address?.city ?? '';
-        const patientState = formData.dependent?.address?.state ?? '';
-        const patientPostalCode = formData.dependent?.address?.postalCode ?? '';
-        const patientPhone = formData.dependent?.contactInformation?.phoneNumber ?? '';
-        
-        if (!newData.subscriber) {
-          newData.subscriber = {
-            paymentResponsibilityLevelCode: prev.subscriber?.paymentResponsibilityLevelCode || '1'
-          };
-        }
-        
-        // Always sync name fields (including empty strings) when Self is selected
-        newData.subscriber = {
-          ...newData.subscriber,
-          lastName: patientLastName,
-          firstName: patientFirstName,
-          middleName: patientMiddleName,
-          paymentResponsibilityLevelCode: newData.subscriber.paymentResponsibilityLevelCode || '1'
-        };
-        
-        // Always sync address fields (including empty strings) when Self is selected
-        if (!newData.subscriber.address) {
-          newData.subscriber.address = {
-            address1: patientAddress1,
-            city: patientCity
-          };
-        } else {
-          newData.subscriber.address = {
-            ...newData.subscriber.address,
-            address1: patientAddress1,
-            city: patientCity,
-            state: patientState,
-            postalCode: patientPostalCode
-          };
-        }
-        
-        if (!newData.subscriber.contactInformation) {
-          newData.subscriber.contactInformation = {
-            phoneNumber: patientPhone
-          };
-        } else {
-          newData.subscriber.contactInformation = {
-            ...newData.subscriber.contactInformation,
-            phoneNumber: patientPhone
-          };
-        }
-        
-        // Ensure paymentResponsibilityLevelCode is set
-        newData.subscriber = {
-          ...newData.subscriber,
-          paymentResponsibilityLevelCode: newData.subscriber.paymentResponsibilityLevelCode || '1'
-        };
-        
-        return newData;
-      });
-    }
-  }, [
-    formData.dependent?.relationshipToSubscriberCode,
-    formData.dependent?.lastName,
-    formData.dependent?.firstName,
-    formData.dependent?.middleName,
-    formData.dependent?.address?.address1,
-    formData.dependent?.address?.city,
-    formData.dependent?.address?.state,
-    formData.dependent?.address?.postalCode,
-    formData.dependent?.contactInformation?.phoneNumber
-  ]);
-
   const updateField = (path: string[], value: unknown) => {
     setFormData(prev => {
-      const newData = { ...prev };
-      let current: Record<string, unknown> = newData;
-      
+      const previousRoot = prev as Record<string, unknown>;
+      const newData = { ...previousRoot };
+      let previous: Record<string, unknown> | undefined = previousRoot;
+      let current = newData;
+
       for (let i = 0; i < path.length - 1; i++) {
-        if (!current[path[i]]) {
-          current[path[i]] = {};
-        }
-        current = current[path[i]] as Record<string, unknown>;
+        const key = path[i];
+        const previousValue: unknown = previous ? previous[key] : undefined;
+        const nextValue: Record<string, unknown> = previousValue && typeof previousValue === 'object'
+          ? { ...(previousValue as Record<string, unknown>) }
+          : {};
+        current[key] = nextValue;
+        current = nextValue;
+        previous = previousValue && typeof previousValue === 'object'
+          ? previousValue as Record<string, unknown>
+          : undefined;
       }
-      
+
       current[path[path.length - 1]] = value;
-      return newData;
+      return newData as Partial<ClaimSubmissionRequest>;
+    });
+  };
+
+  const setPatientRelationship = (relationship: '18' | Dependent['relationshipToSubscriberCode']) => {
+    setFormData((prev) => {
+      if (relationship === '18') {
+        const patient = prev.dependent;
+        return {
+          ...prev,
+          subscriber: {
+            ...prev.subscriber,
+            ...(patient ? {
+              firstName: patient.firstName,
+              lastName: patient.lastName,
+              middleName: patient.middleName,
+              suffix: patient.suffix,
+              gender: patient.gender,
+              dateOfBirth: patient.dateOfBirth,
+              address: patient.address,
+              contactInformation: patient.contactInformation
+            } : {}),
+            paymentResponsibilityLevelCode: 'P'
+          },
+          dependent: undefined
+        };
+      }
+
+      return {
+        ...prev,
+        subscriber: {
+          ...prev.subscriber,
+          paymentResponsibilityLevelCode: 'P'
+        },
+        dependent: {
+          firstName: prev.dependent?.firstName || '',
+          lastName: prev.dependent?.lastName || '',
+          middleName: prev.dependent?.middleName,
+          suffix: prev.dependent?.suffix,
+          gender: prev.dependent?.gender || 'U',
+          dateOfBirth: prev.dependent?.dateOfBirth || '',
+          relationshipToSubscriberCode: relationship,
+          address: prev.dependent?.address || {
+            address1: '',
+            city: '',
+            state: '',
+            postalCode: ''
+          },
+          contactInformation: prev.dependent?.contactInformation
+        }
+      };
     });
   };
 
@@ -579,22 +1030,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
     const currentLines = formData.claimInformation?.serviceLines || [];
     if (currentLines.length >= 6) return;
     
-    const newLine: ServiceLine = {
-      serviceDate: '',
-      serviceDateEnd: '',
-      professionalService: {
-        procedureIdentifier: 'HC',
-        procedureCode: '',
-        procedureModifiers: [],
-        lineItemChargeAmount: '',
-        measurementUnit: 'UN',
-        serviceUnitCount: '',
-        placeOfServiceCode: '10',
-        compositeDiagnosisCodePointers: {
-          diagnosisCodePointers: []
-        }
-      }
-    };
+    const newLine = createEmptyServiceLine();
     
     updateField(['claimInformation', 'serviceLines'], [...currentLines, newLine]);
   };
@@ -638,85 +1074,13 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
     setActionType('validate');
 
     try {
-      // Build submitter from billing provider data
-      const submitter = formData.submitter || {
-        organizationName: formData.billing?.organizationName || formData.billing?.lastName || 'SUBMITTER ORG',
-        contactInformation: {
-          name: formData.billing?.organizationName || formData.billing?.lastName || 'Contact',
-          phoneNumber: formData.billing?.contactInformation?.phoneNumber || '5555555555',
-          email: formData.billing?.contactInformation?.email
-        }
-      };
-
-      const claimRequest: ClaimSubmissionRequest = {
-        controlNumber: formData.controlNumber || `CLM${Date.now()}`.slice(0, 30),
-        tradingPartnerServiceId: formData.tradingPartnerServiceId || '',
-        usageIndicator: submitAsTest ? 'T' : 'P',
-        submitter: submitter,
-        receiver: formData.receiver || {
-          organizationName: selectedPayerName || 'RECEIVER ORG'
-        },
-        subscriber: {
-          memberId: formData.subscriber?.memberId || '',
-          firstName: formData.subscriber?.firstName || '',
-          lastName: formData.subscriber?.lastName || '',
-          gender: formData.subscriber?.gender || 'M',
-          dateOfBirth: formData.subscriber?.dateOfBirth || '',
-          paymentResponsibilityLevelCode: formData.subscriber?.paymentResponsibilityLevelCode || '1',
-          address: formData.subscriber?.address || {
-            address1: '',
-            city: '',
-            state: '',
-            postalCode: ''
-          },
-          ...(formData.subscriber?.ssn && { ssn: formData.subscriber.ssn }),
-          ...(formData.subscriber?.contactInformation && { contactInformation: formData.subscriber.contactInformation }),
-          ...(formData.subscriber?.middleName && { middleName: formData.subscriber.middleName }),
-          ...(formData.subscriber?.groupNumber && { groupNumber: formData.subscriber.groupNumber })
-        },
-        ...(formData.dependent && { dependent: formData.dependent }),
-        billing: formData.billing || {
-          organizationName: '',
-          npi: '',
-          providerType: 'Organization',
-          address: {
-            address1: '',
-            city: '',
-            state: '',
-            postalCode: ''
-          }
-        },
-        ...(formData.rendering && { rendering: formData.rendering }),
-        ...(formData.referring && { referring: formData.referring }),
-        claimInformation: {
-          claimFilingCode: formData.claimInformation?.claimFilingCode || '',
-          patientControlNumber: formData.claimInformation?.patientControlNumber || '',
-          placeOfServiceCode: formData.claimInformation?.placeOfServiceCode || '11',
-          claimChargeAmount: formData.claimInformation?.claimChargeAmount ? formatCurrency(formData.claimInformation.claimChargeAmount) : '0.00',
-          planParticipationCode: formData.claimInformation?.planParticipationCode || '',
-          claimFrequencyCode: formData.claimInformation?.claimFrequencyCode || '1',
-          signatureIndicator: formData.claimInformation?.signatureIndicator || 'Y',
-          benefitsAssignmentCertificationIndicator: formData.claimInformation?.benefitsAssignmentCertificationIndicator || 'Y',
-          releaseInformationCode: formData.claimInformation?.releaseInformationCode || 'Y',
-          ...(formData.claimInformation?.patientAmountPaid && { patientAmountPaid: formatCurrency(formData.claimInformation.patientAmountPaid) }),
-          ...(formData.claimInformation?.claimSupplementalInformation && { claimSupplementalInformation: formData.claimInformation.claimSupplementalInformation }),
-          ...(formData.claimInformation?.serviceFacilityLocation && { serviceFacilityLocation: formData.claimInformation.serviceFacilityLocation }),
-          healthCareCodeInformation: formData.claimInformation?.healthCareCodeInformation || [],
-          serviceLines: formData.claimInformation?.serviceLines || []
-        }
-      };
-
-      if (claimRequest.subscriber.dateOfBirth) {
-        claimRequest.subscriber.dateOfBirth = formatDateForAPI(claimRequest.subscriber.dateOfBirth);
-      }
-      if (claimRequest.dependent?.dateOfBirth) {
-        claimRequest.dependent.dateOfBirth = formatDateForAPI(claimRequest.dependent.dateOfBirth);
-      }
-      claimRequest.claimInformation.serviceLines = claimRequest.claimInformation.serviceLines.map(line => ({
-        ...line,
-        serviceDate: formatDateForAPI(line.serviceDate)
-      }));
-
+      const claimRequest = buildPrimaryClaimRequest(formData, {
+        submitAsTest,
+        patientSignatureOnFile,
+        authorizedSignatureOnFile,
+        physicianSignatureOnFile,
+        selectedPayerName
+      });
       setLastRequest(claimRequest);
       const result = await validateClaim(claimRequest, environment);
       setResponse(result);
@@ -734,85 +1098,13 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
     setActionType('submit');
 
     try {
-      // Build submitter from billing provider data
-      const submitter = formData.submitter || {
-        organizationName: formData.billing?.organizationName || formData.billing?.lastName || 'SUBMITTER ORG',
-        contactInformation: {
-          name: formData.billing?.organizationName || formData.billing?.lastName || 'Contact',
-          phoneNumber: formData.billing?.contactInformation?.phoneNumber || '5555555555',
-          email: formData.billing?.contactInformation?.email
-        }
-      };
-
-      const claimRequest: ClaimSubmissionRequest = {
-        controlNumber: formData.controlNumber || `CLM${Date.now()}`.slice(0, 30),
-        tradingPartnerServiceId: formData.tradingPartnerServiceId || '',
-        usageIndicator: submitAsTest ? 'T' : 'P',
-        submitter: submitter,
-        receiver: formData.receiver || {
-          organizationName: selectedPayerName || 'RECEIVER ORG'
-        },
-        subscriber: {
-          memberId: formData.subscriber?.memberId || '',
-          firstName: formData.subscriber?.firstName || '',
-          lastName: formData.subscriber?.lastName || '',
-          gender: formData.subscriber?.gender || 'M',
-          dateOfBirth: formData.subscriber?.dateOfBirth || '',
-          paymentResponsibilityLevelCode: formData.subscriber?.paymentResponsibilityLevelCode || '1',
-          address: formData.subscriber?.address || {
-            address1: '',
-            city: '',
-            state: '',
-            postalCode: ''
-          },
-          ...(formData.subscriber?.ssn && { ssn: formData.subscriber.ssn }),
-          ...(formData.subscriber?.contactInformation && { contactInformation: formData.subscriber.contactInformation }),
-          ...(formData.subscriber?.middleName && { middleName: formData.subscriber.middleName }),
-          ...(formData.subscriber?.groupNumber && { groupNumber: formData.subscriber.groupNumber })
-        },
-        ...(formData.dependent && { dependent: formData.dependent }),
-        billing: formData.billing || {
-          organizationName: '',
-          npi: '',
-          providerType: 'Organization',
-          address: {
-            address1: '',
-            city: '',
-            state: '',
-            postalCode: ''
-          }
-        },
-        ...(formData.rendering && { rendering: formData.rendering }),
-        ...(formData.referring && { referring: formData.referring }),
-        claimInformation: {
-          claimFilingCode: formData.claimInformation?.claimFilingCode || '',
-          patientControlNumber: formData.claimInformation?.patientControlNumber || '',
-          placeOfServiceCode: formData.claimInformation?.placeOfServiceCode || '11',
-          claimChargeAmount: formData.claimInformation?.claimChargeAmount ? formatCurrency(formData.claimInformation.claimChargeAmount) : '0.00',
-          planParticipationCode: formData.claimInformation?.planParticipationCode || '',
-          claimFrequencyCode: formData.claimInformation?.claimFrequencyCode || '1',
-          signatureIndicator: formData.claimInformation?.signatureIndicator || 'Y',
-          benefitsAssignmentCertificationIndicator: formData.claimInformation?.benefitsAssignmentCertificationIndicator || 'Y',
-          releaseInformationCode: formData.claimInformation?.releaseInformationCode || 'Y',
-          ...(formData.claimInformation?.patientAmountPaid && { patientAmountPaid: formatCurrency(formData.claimInformation.patientAmountPaid) }),
-          ...(formData.claimInformation?.claimSupplementalInformation && { claimSupplementalInformation: formData.claimInformation.claimSupplementalInformation }),
-          ...(formData.claimInformation?.serviceFacilityLocation && { serviceFacilityLocation: formData.claimInformation.serviceFacilityLocation }),
-          healthCareCodeInformation: formData.claimInformation?.healthCareCodeInformation || [],
-          serviceLines: formData.claimInformation?.serviceLines || []
-        }
-      };
-
-      if (claimRequest.subscriber.dateOfBirth) {
-        claimRequest.subscriber.dateOfBirth = formatDateForAPI(claimRequest.subscriber.dateOfBirth);
-      }
-      if (claimRequest.dependent?.dateOfBirth) {
-        claimRequest.dependent.dateOfBirth = formatDateForAPI(claimRequest.dependent.dateOfBirth);
-      }
-      claimRequest.claimInformation.serviceLines = claimRequest.claimInformation.serviceLines.map(line => ({
-        ...line,
-        serviceDate: formatDateForAPI(line.serviceDate)
-      }));
-
+      const claimRequest = buildPrimaryClaimRequest(formData, {
+        submitAsTest,
+        patientSignatureOnFile,
+        authorizedSignatureOnFile,
+        physicianSignatureOnFile,
+        selectedPayerName
+      });
       setLastRequest(claimRequest);
       const result = await submitClaim(claimRequest, environment);
       setResponse(result);
@@ -846,22 +1138,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
 
   // Ensure at least one service line exists
   const serviceLines = formData.claimInformation?.serviceLines || [];
-  const effectiveServiceLines = serviceLines.length === 0 ? [{
-    serviceDate: '',
-    serviceDateEnd: '',
-    professionalService: {
-      procedureIdentifier: 'HC',
-      procedureCode: '',
-      procedureModifiers: [],
-      lineItemChargeAmount: '',
-      measurementUnit: 'UN',
-      serviceUnitCount: '',
-      placeOfServiceCode: '10',
-      compositeDiagnosisCodePointers: {
-        diagnosisCodePointers: []
-      }
-    }
-  }] : serviceLines;
+  const effectiveServiceLines = serviceLines;
   
   const diagnoses = formData.claimInformation?.healthCareCodeInformation || [];
   
@@ -871,17 +1148,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
   };
 
   const clearForm = () => {
-    const initialData: Partial<ClaimSubmissionRequest> = {};
-    initialData.claimInformation = {
-      claimFilingCode: 'CI',
-      outsideLab: false
-    } as Partial<ClaimSubmissionRequest>['claimInformation'];
-    initialData.billing = {
-      taxIdType: 'EIN',
-      providerType: 'Organization'
-    } as Partial<ClaimSubmissionRequest>['billing'];
-    
-    setFormData(initialData);
+    setFormData(createInitialFormData());
     setPatientSignatureOnFile(true);
     setAuthorizedSignatureOnFile(true);
     setPhysicianSignatureOnFile(true);
@@ -891,55 +1158,72 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
   };
 
   const loadDefaultData = () => {
-    // Load test data - you can customize this
+    const timestamp = Date.now().toString().slice(-6);
+    const defaultProvider = PROVIDER_OPTIONS[0];
+    const defaultPayer = allPayers.find((payer) => payer.payerId === '87726') || allPayers[0];
+    const defaultPayerId = defaultPayer?.payerId || '87726';
+    const defaultPayerName = defaultPayer?.payerPlanName || 'UnitedHealthcare';
+    const serviceDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const patientAddress = {
+      address1: '123 Main St',
+      city: 'Portland',
+      state: 'OR',
+      postalCode: '97201'
+    };
+    const providerAddress = defaultProvider?.address || {
+      address1: '4784 SE 17th Ave, Ste 225',
+      city: 'Portland',
+      state: 'OR',
+      postalCode: '97202'
+    };
+
     const testData: Partial<ClaimSubmissionRequest> = {
-      controlNumber: 'TEST' + Date.now().toString().slice(-6),
-      tradingPartnerServiceId: '87726',
+      controlNumber: generateControlNumber(),
+      tradingPartnerServiceId: defaultPayerId,
+      tradingPartnerName: defaultPayerName,
       submitter: {
-        organizationName: 'Reperio Health Medical Group',
+        organizationName: defaultProvider?.organizationName || 'Reperio Health Medical Group, PLLC',
         contactInformation: {
           name: 'Billing Department',
-          phoneNumber: '5551234567',
+          phoneNumber: defaultProvider?.phone || '5551234567',
           email: 'billing@reperio.health'
         }
       },
       receiver: {
-        organizationName: 'UnitedHealthcare'
+        organizationName: defaultPayerName
       },
       subscriber: {
         paymentResponsibilityLevelCode: 'P',
-        memberId: '',
-        firstName: '',
-        lastName: '',
+        memberId: 'TEST123456789',
+        firstName: 'Taylor',
+        lastName: 'Morgan',
         gender: 'M',
-        dateOfBirth: '',
-        address: {
-          address1: '123 Main St',
-          city: 'Portland',
-          state: 'OR',
-          postalCode: '97201'
+        dateOfBirth: '19800115',
+        address: { ...patientAddress },
+        contactInformation: {
+          name: 'Taylor Morgan',
+          phoneNumber: '5035550100'
         }
       },
       billing: {
-        providerType: 'Organization',
-        organizationName: 'Reperio Health Medical Group, PLLC',
-        npi: '1982438362',
+        providerType: 'BillingProvider',
+        organizationName: defaultProvider?.organizationName || 'Reperio Health Medical Group, PLLC',
+        npi: defaultProvider?.npi || '1982438362',
         taxIdType: 'EIN',
-        employerId: '123456789',
-        address: {
-          address1: '456 Provider Ave',
-          city: 'Portland',
-          state: 'OR',
-          postalCode: '97202'
-        },
+        employerId: defaultProvider?.ein || '994567305',
+        // Demo-only fallback keeps Load Default Data immediately valid. Real
+        // provider presets should supply their enrolled billing taxonomy.
+        taxonomyCode: defaultProvider?.taxonomyCode || DEFAULT_TEST_TAXONOMY_CODE,
+        address: { ...providerAddress },
         contactInformation: {
-          name: 'Billing',
-          phoneNumber: '5551234567'
+          name: defaultProvider?.contactName || 'Billing Department',
+          phoneNumber: defaultProvider?.phone || '5551234567',
+          email: defaultProvider?.contactEmail || 'billing@reperio.health'
         }
       },
       claimInformation: {
         claimFilingCode: 'CI',
-        patientControlNumber: 'PAT' + Date.now().toString().slice(-6),
+        patientControlNumber: `PAT${timestamp}`,
         claimChargeAmount: '15000',
         placeOfServiceCode: '02',
         claimFrequencyCode: '1',
@@ -947,12 +1231,19 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
         planParticipationCode: 'A',
         benefitsAssignmentCertificationIndicator: 'Y',
         releaseInformationCode: 'Y',
+        serviceFacilityLocation: {
+          organizationName: defaultProvider?.organizationName || 'Reperio Health Medical Group, PLLC',
+          npi: defaultProvider?.npi || '1982438362',
+          phoneName: defaultProvider?.contactName || 'Facility Contact',
+          phoneNumber: defaultProvider?.phone || '5551234567',
+          address: { ...providerAddress }
+        },
         healthCareCodeInformation: [
-          { diagnosisTypeCode: 'ABK', diagnosisCode: 'Z00.00' }
+          { diagnosisTypeCode: 'ABK', diagnosisCode: 'Z0000' }
         ],
         serviceLines: [
           {
-            serviceDate: '20250121',
+            serviceDate,
             professionalService: {
               procedureIdentifier: 'HC',
               procedureCode: '99213',
@@ -971,7 +1262,21 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
     };
     
     setFormData(testData);
+    setSelectedPayerName(defaultPayerName);
+    setSelectedProviderOption(defaultProvider?.npi || CUSTOM_PROVIDER_OPTION);
+    setSubmitAsTest(true);
+    setPatientSignatureOnFile(true);
+    setAuthorizedSignatureOnFile(true);
+    setPhysicianSignatureOnFile(true);
+    setResponse(null);
+    setError(null);
+    setLastRequest(null);
+    setActionType(null);
+    localStorage.setItem(`${STORAGE_KEY_SELECTED_PAYER}-${environment}`, defaultPayerId);
   };
+
+  const patient = patientIsSubscriber ? formData.subscriber : formData.dependent;
+  const patientFieldRoot = patientIsSubscriber ? 'subscriber' : 'dependent';
 
   return (
     <div className="w-full">
@@ -1083,20 +1388,22 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 className="w-full p-2 border rounded font-mono text-sm"
               >
                 <option value="">Name                                              | Payer ID</option>
-                {allPayers.map((payer, index) => {
+                {displayedPayers.map((payer) => {
                   const payerId = payer.payerId || '';
                   const name = (payer.payerPlanName || 'Unknown').substring(0, 50);
-                  const key = payerId || `payer-${index}`;
                   const formattedName = name.padEnd(50, ' ');
                   
                   return (
-                    <option key={key} value={payerId}>
+                    <option key={payerId} value={payerId}>
                       {formattedName} | {payerId}
                     </option>
                   );
                 })}
               </select>
             )}
+            <p className="mt-2 text-xs text-gray-600">
+              Payer responsibility: <span className="font-semibold">Primary (P)</span>
+            </p>
           </div>
 
           {/* Provider Selection (populates Box 32 & 33) */}
@@ -1124,36 +1431,10 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
           {/* Box 1 */}
           <div className="pb-3">
             <label className="text-sm font-bold text-[#c41e3a] mb-2 block">1. Insurance Type</label>
-            <div className="flex flex-wrap gap-4">
-              {[
-                { code: 'MB', label: 'MEDICARE' },
-                { code: 'MC', label: 'MEDICAID' },
-                { code: 'CH', label: 'TRICARE' },
-                { code: 'VA', label: 'CHAMPVA' },
-                { code: 'HM', label: 'GROUP HEALTH PLAN' },
-                { code: 'BL', label: 'FECA BLK LUNG' },
-                { code: 'CI', label: 'OTHER' }
-              ].map(({ code, label }) => {
-                const isChecked = formData.claimInformation?.claimFilingCode === code || (code === 'CI' && !formData.claimInformation?.claimFilingCode);
-                return (
-                  <label key={code} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          updateField(['claimInformation', 'claimFilingCode'], code);
-                        } else {
-                          updateField(['claimInformation', 'claimFilingCode'], '');
-                        }
-                      }}
-                      className="w-4 h-4"
-                    />
-                    <span className="text-sm">{label}</span>
-                  </label>
-                );
-              })}
-            </div>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked disabled className="w-4 h-4" />
+              <span className="text-sm">COMMERCIAL INSURANCE (CI)</span>
+            </label>
           </div>
 
           {/* Box 1a */}
@@ -1170,27 +1451,34 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
           {/* Box 2 */}
           <div className="pb-3">
             <label className="text-sm font-bold text-[#c41e3a] mb-2 block">2. PATIENT'S NAME (Last Name, First Name, Middle Initial)</label>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <input
                 type="text"
-                value={formData.dependent?.lastName ?? ''}
-                onChange={(e) => updateField(['dependent', 'lastName'], e.target.value)}
+                value={patient?.lastName ?? ''}
+                onChange={(e) => updateField([patientFieldRoot, 'lastName'], e.target.value)}
                 placeholder="Last Name"
                 className="p-2 border rounded"
               />
               <input
                 type="text"
-                value={formData.dependent?.firstName ?? ''}
-                onChange={(e) => updateField(['dependent', 'firstName'], e.target.value)}
+                value={patient?.firstName ?? ''}
+                onChange={(e) => updateField([patientFieldRoot, 'firstName'], e.target.value)}
                 placeholder="First Name"
                 className="p-2 border rounded"
               />
               <input
                 type="text"
-                value={formData.dependent?.middleName ?? ''}
-                onChange={(e) => updateField(['dependent', 'middleName'], e.target.value)}
+                value={patient?.middleName ?? ''}
+                onChange={(e) => updateField([patientFieldRoot, 'middleName'], e.target.value)}
                 placeholder="MI"
                 maxLength={1}
+                className="p-2 border rounded"
+              />
+              <input
+                type="text"
+                value={patient?.suffix ?? ''}
+                onChange={(e) => updateField([patientFieldRoot, 'suffix'], e.target.value)}
+                placeholder="Suffix"
                 className="p-2 border rounded"
               />
             </div>
@@ -1202,37 +1490,22 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
             <div className="space-y-2">
               <input
                 type="text"
-                value={formData.dependent?.address?.address1 ?? ''}
-                onChange={(e) => {
-                  if (!formData.dependent?.address) {
-                    updateField(['dependent', 'address'], {});
-                  }
-                  updateField(['dependent', 'address', 'address1'], e.target.value);
-                }}
+                value={patient?.address?.address1 ?? ''}
+                onChange={(e) => updateField([patientFieldRoot, 'address', 'address1'], e.target.value)}
                 placeholder="Street Address"
                 className="w-full p-2 border rounded"
               />
               <div className="grid grid-cols-3 gap-4">
                 <input
                   type="text"
-                  value={formData.dependent?.address?.city ?? ''}
-                  onChange={(e) => {
-                    if (!formData.dependent?.address) {
-                      updateField(['dependent', 'address'], {});
-                    }
-                    updateField(['dependent', 'address', 'city'], e.target.value);
-                  }}
+                  value={patient?.address?.city ?? ''}
+                  onChange={(e) => updateField([patientFieldRoot, 'address', 'city'], e.target.value)}
                   placeholder="City"
                   className="p-2 border rounded"
                 />
                 <select
-                  value={formData.dependent?.address?.state ?? ''}
-                  onChange={(e) => {
-                    if (!formData.dependent?.address) {
-                      updateField(['dependent', 'address'], {});
-                    }
-                    updateField(['dependent', 'address', 'state'], e.target.value);
-                  }}
+                  value={patient?.address?.state ?? ''}
+                  onChange={(e) => updateField([patientFieldRoot, 'address', 'state'], e.target.value)}
                   className="p-2 border rounded"
                 >
                   <option value="">State</option>
@@ -1244,27 +1517,19 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 </select>
                 <input
                   type="text"
-                  value={formData.dependent?.address?.postalCode ?? ''}
-                  onChange={(e) => {
-                    if (!formData.dependent?.address) {
-                      updateField(['dependent', 'address'], {});
-                    }
-                    updateField(['dependent', 'address', 'postalCode'], e.target.value);
-                  }}
+                  value={patient?.address?.postalCode ?? ''}
+                  onChange={(e) => updateField([patientFieldRoot, 'address', 'postalCode'], e.target.value.replace(/\D/g, '').slice(0, 9))}
                   placeholder="ZIP Code"
                   className="p-2 border rounded"
                 />
               </div>
               <input
                 type="tel"
-                value={formData.dependent?.contactInformation?.phoneNumber ? formatPhoneNumber(formData.dependent.contactInformation.phoneNumber) : ''}
+                value={patient?.contactInformation?.phoneNumber ? formatPhoneNumber(patient.contactInformation.phoneNumber) : ''}
                 onChange={(e) => {
-                  if (!formData.dependent?.contactInformation) {
-                    updateField(['dependent', 'contactInformation'], {});
-                  }
-                  // Store unformatted digits only
                   const digits = e.target.value.replace(/\D/g, '');
-                  updateField(['dependent', 'contactInformation', 'phoneNumber'], digits);
+                  updateField([patientFieldRoot, 'contactInformation', 'name'], patient?.contactInformation?.name || [patient?.firstName, patient?.lastName].filter(Boolean).join(' '));
+                  updateField([patientFieldRoot, 'contactInformation', 'phoneNumber'], digits);
                 }}
                 placeholder="Telephone"
                 className="w-full p-2 border rounded"
@@ -1276,51 +1541,19 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
           <div className="pb-3">
             <label className="text-sm font-bold text-[#c41e3a] mb-2 block">3. PATIENT'S BIRTH DATE</label>
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">MM</span>
-                <input
-                  type="text"
-                  value={formData.subscriber?.dateOfBirth ? formatDateForInput(formData.subscriber.dateOfBirth).substring(5, 7) : ''}
-                  onChange={(e) => {
-                    const current = formData.subscriber?.dateOfBirth ? formatDateForInput(formData.subscriber.dateOfBirth) : '----';
-                    const parts = current.split('-');
-                    updateField(['subscriber', 'dateOfBirth'], `${parts[0]}-${e.target.value.padStart(2, '0')}-${parts[2] || '01'}`);
-                  }}
-                  maxLength={2}
-                  className="w-16 p-2 border rounded text-center"
-                />
-                <span className="text-sm">DD</span>
-                <input
-                  type="text"
-                  value={formData.subscriber?.dateOfBirth ? formatDateForInput(formData.subscriber.dateOfBirth).substring(8, 10) : ''}
-                  onChange={(e) => {
-                    const current = formData.subscriber?.dateOfBirth ? formatDateForInput(formData.subscriber.dateOfBirth) : '----';
-                    const parts = current.split('-');
-                    updateField(['subscriber', 'dateOfBirth'], `${parts[0]}-${parts[1] || '01'}-${e.target.value.padStart(2, '0')}`);
-                  }}
-                  maxLength={2}
-                  className="w-16 p-2 border rounded text-center"
-                />
-                <span className="text-sm">YY</span>
-                <input
-                  type="text"
-                  value={formData.subscriber?.dateOfBirth ? formatDateForInput(formData.subscriber.dateOfBirth).substring(2, 4) : ''}
-                  onChange={(e) => {
-                    const current = formData.subscriber?.dateOfBirth ? formatDateForInput(formData.subscriber.dateOfBirth) : '----';
-                    const parts = current.split('-');
-                    updateField(['subscriber', 'dateOfBirth'], `20${e.target.value.padStart(2, '0')}-${parts[1] || '01'}-${parts[2] || '01'}`);
-                  }}
-                  maxLength={2}
-                  className="w-16 p-2 border rounded text-center"
-                />
-              </div>
+              <input
+                type="date"
+                value={patient?.dateOfBirth ? formatDateForInput(patient.dateOfBirth) : ''}
+                onChange={(e) => updateField([patientFieldRoot, 'dateOfBirth'], e.target.value)}
+                className="p-2 border rounded"
+              />
               <div className="flex items-center gap-4">
                 <span className="text-sm font-bold text-[#c41e3a]">SEX</span>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={formData.subscriber?.gender === 'M'}
-                    onChange={(e) => updateField(['subscriber', 'gender'], e.target.checked ? 'M' : 'F')}
+                    checked={patient?.gender === 'M'}
+                    onChange={() => updateField([patientFieldRoot, 'gender'], 'M')}
                     className="w-4 h-4"
                   />
                   <span className="text-sm">M</span>
@@ -1328,8 +1561,8 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={formData.subscriber?.gender === 'F'}
-                    onChange={(e) => updateField(['subscriber', 'gender'], e.target.checked ? 'F' : 'M')}
+                    checked={patient?.gender === 'F'}
+                    onChange={() => updateField([patientFieldRoot, 'gender'], 'F')}
                     className="w-4 h-4"
                   />
                   <span className="text-sm">F</span>
@@ -1345,44 +1578,8 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={formData.dependent?.relationshipToSubscriberCode === '18'}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      updateField(['dependent', 'relationshipToSubscriberCode'], '18');
-                      // If Self is selected, copy Box 2 (Patient's Name) to Box 4 (Insured's Name) and Box 5 (Patient's Address) to Box 7 (Insured's Address)
-                      const patientLastName = formData.dependent?.lastName || formData.subscriber?.lastName || '';
-                      const patientFirstName = formData.dependent?.firstName || formData.subscriber?.firstName || '';
-                      const patientMiddleName = formData.dependent?.middleName || formData.subscriber?.middleName || '';
-                      const patientAddress1 = formData.dependent?.address?.address1 || formData.subscriber?.address?.address1 || '';
-                      const patientCity = formData.dependent?.address?.city || formData.subscriber?.address?.city || '';
-                      const patientState = formData.dependent?.address?.state || formData.subscriber?.address?.state || '';
-                      const patientPostalCode = formData.dependent?.address?.postalCode || formData.subscriber?.address?.postalCode || '';
-                      const patientPhone = formData.dependent?.contactInformation?.phoneNumber || formData.subscriber?.contactInformation?.phoneNumber || '';
-                      
-                      if (patientLastName || patientFirstName || patientMiddleName) {
-                        updateField(['subscriber', 'lastName'], patientLastName);
-                        updateField(['subscriber', 'firstName'], patientFirstName);
-                        updateField(['subscriber', 'middleName'], patientMiddleName);
-                      }
-                      if (patientAddress1 || patientCity || patientState || patientPostalCode) {
-                        if (!formData.subscriber?.address) {
-                          updateField(['subscriber', 'address'], {});
-                        }
-                        updateField(['subscriber', 'address', 'address1'], patientAddress1);
-                        updateField(['subscriber', 'address', 'city'], patientCity);
-                        updateField(['subscriber', 'address', 'state'], patientState);
-                        updateField(['subscriber', 'address', 'postalCode'], patientPostalCode);
-                      }
-                      if (patientPhone) {
-                        if (!formData.subscriber?.contactInformation) {
-                          updateField(['subscriber', 'contactInformation'], {});
-                        }
-                        updateField(['subscriber', 'contactInformation', 'phoneNumber'], patientPhone);
-                      }
-                    } else {
-                      updateField(['dependent', 'relationshipToSubscriberCode'], '');
-                    }
-                  }}
+                  checked={patientIsSubscriber}
+                  onChange={(e) => e.target.checked && setPatientRelationship('18')}
                   className="w-4 h-4"
                 />
                 <span className="text-sm">Self</span>
@@ -1391,13 +1588,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 <input
                   type="checkbox"
                   checked={formData.dependent?.relationshipToSubscriberCode === '01'}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      updateField(['dependent', 'relationshipToSubscriberCode'], '01');
-                    } else {
-                      updateField(['dependent', 'relationshipToSubscriberCode'], '');
-                    }
-                  }}
+                  onChange={(e) => e.target.checked && setPatientRelationship('01')}
                   className="w-4 h-4"
                 />
                 <span className="text-sm">Spouse</span>
@@ -1406,13 +1597,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 <input
                   type="checkbox"
                   checked={formData.dependent?.relationshipToSubscriberCode === '19'}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      updateField(['dependent', 'relationshipToSubscriberCode'], '19');
-                    } else {
-                      updateField(['dependent', 'relationshipToSubscriberCode'], '');
-                    }
-                  }}
+                  onChange={(e) => e.target.checked && setPatientRelationship('19')}
                   className="w-4 h-4"
                 />
                 <span className="text-sm">Child</span>
@@ -1420,15 +1605,8 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={formData.dependent?.relationshipToSubscriberCode !== undefined && 
-                           !['18', '01', '19'].includes(formData.dependent?.relationshipToSubscriberCode || '')}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      updateField(['dependent', 'relationshipToSubscriberCode'], 'OTHER');
-                    } else {
-                      updateField(['dependent', 'relationshipToSubscriberCode'], '');
-                    }
-                  }}
+                  checked={formData.dependent?.relationshipToSubscriberCode === 'G8'}
+                  onChange={(e) => e.target.checked && setPatientRelationship('G8')}
                   className="w-4 h-4"
                 />
                 <span className="text-sm">Other</span>
@@ -1439,7 +1617,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
           {/* Box 4 */}
           <div className="pb-3">
             <label className="text-sm font-bold text-[#c41e3a] mb-2 block">4. INSURED'S NAME (Last Name, First Name, Middle Initial)</label>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <input
                 type="text"
                 value={formData.subscriber?.lastName ?? ''}
@@ -1460,6 +1638,13 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 onChange={(e) => updateField(['subscriber', 'middleName'], e.target.value)}
                 placeholder="MI"
                 maxLength={1}
+                className="p-2 border rounded"
+              />
+              <input
+                type="text"
+                value={formData.subscriber?.suffix ?? ''}
+                onChange={(e) => updateField(['subscriber', 'suffix'], e.target.value)}
+                placeholder="Suffix"
                 className="p-2 border rounded"
               />
             </div>
@@ -1536,22 +1721,30 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
           <div className="pb-3">
             <label className="text-sm font-bold text-[#c41e3a] mb-2 block">11a. INSURED'S DATE OF BIRTH</label>
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">MM</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-                <span className="text-sm">DD</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-                <span className="text-sm">YY</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-              </div>
+              <input
+                type="date"
+                value={formData.subscriber?.dateOfBirth ? formatDateForInput(formData.subscriber.dateOfBirth) : ''}
+                onChange={(e) => updateField(['subscriber', 'dateOfBirth'], e.target.value)}
+                className="p-2 border rounded"
+              />
               <div className="flex items-center gap-4">
                 <span className="text-sm font-bold text-[#c41e3a]">SEX</span>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="w-4 h-4" />
+                  <input
+                    type="checkbox"
+                    checked={formData.subscriber?.gender === 'M'}
+                    onChange={() => updateField(['subscriber', 'gender'], 'M')}
+                    className="w-4 h-4"
+                  />
                   <span className="text-sm">M</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="w-4 h-4" />
+                  <input
+                    type="checkbox"
+                    checked={formData.subscriber?.gender === 'F'}
+                    onChange={() => updateField(['subscriber', 'gender'], 'F')}
+                    className="w-4 h-4"
+                  />
                   <span className="text-sm">F</span>
                 </label>
               </div>
@@ -1560,14 +1753,24 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
 
           {/* Box 11b */}
           <div className="pb-3">
-            <label className="text-sm font-bold text-[#c41e3a] mb-2 block">11b. Other Claim ID</label>
-            <input type="text" className="w-full p-2 border rounded" />
+            <label className="text-sm font-bold text-[#c41e3a] mb-2 block">11b. OTHER CLAIM ID</label>
+            <input
+              type="text"
+              value={formData.claimInformation?.propertyCasualtyClaimNumber || ''}
+              onChange={(e) => updateField(['claimInformation', 'propertyCasualtyClaimNumber'], e.target.value)}
+              className="w-full p-2 border rounded"
+            />
           </div>
 
           {/* Box 11c */}
           <div className="pb-3">
-            <label className="text-sm font-bold text-[#c41e3a] mb-2 block">11c. Insurance Plan Name</label>
-            <input type="text" className="w-full p-2 border rounded" />
+            <label className="text-sm font-bold text-[#c41e3a] mb-2 block">11c. INSURANCE PLAN NAME</label>
+            <input
+              type="text"
+              value={formData.subscriber?.subscriberGroupName || ''}
+              onChange={(e) => updateField(['subscriber', 'subscriberGroupName'], e.target.value)}
+              className="w-full p-2 border rounded"
+            />
           </div>
 
           {/* Box 11d */}
@@ -1577,8 +1780,8 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={formData.claimInformation?.hasOtherHealthBenefitPlan === true}
-                  onChange={(e) => updateField(['claimInformation', 'hasOtherHealthBenefitPlan'], e.target.checked ? true : undefined)}
+                  checked={false}
+                  disabled
                   className="w-4 h-4"
                 />
                 <span className="text-sm">YES</span>
@@ -1586,12 +1789,13 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={formData.claimInformation?.hasOtherHealthBenefitPlan === false}
-                  onChange={(e) => updateField(['claimInformation', 'hasOtherHealthBenefitPlan'], e.target.checked ? false : undefined)}
+                  checked
+                  disabled
                   className="w-4 h-4"
                 />
                 <span className="text-sm">NO</span>
               </label>
+              <span className="text-xs text-gray-500 self-center">Primary commercial claims only</span>
             </div>
           </div>
 
@@ -1673,73 +1877,15 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
           </div>
 
           {/* Box 10 */}
-          <div className="pb-3">
+          <div className="pb-3 opacity-60">
             <label className="text-sm font-bold text-[#c41e3a] mb-2 block">10. IS PATIENT'S CONDITION RELATED TO:</label>
-            <div className="space-y-2">
-              <div className="flex items-center gap-4">
-                <span className="text-sm">a. Employment (Current or Previous)</span>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="w-4 h-4" />
-                  <span className="text-sm">YES</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="w-4 h-4" />
-                  <span className="text-sm">NO</span>
-                </label>
-              </div>
-              <div className="flex items-center gap-4 flex-wrap">
-                <span className="text-sm">b. Auto Accident?</span>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.claimInformation?.autoAccident === true}
-                    onChange={(e) => updateField(['claimInformation', 'autoAccident'], e.target.checked ? true : undefined)}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm">YES</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.claimInformation?.autoAccident === false}
-                    onChange={(e) => updateField(['claimInformation', 'autoAccident'], e.target.checked ? false : undefined)}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm">NO</span>
-                </label>
-                <span className="text-sm">PLACE</span>
-                <select
-                  value={formData.claimInformation?.autoAccidentState || ''}
-                  onChange={(e) => updateField(['claimInformation', 'autoAccidentState'], e.target.value)}
-                  className={`p-2 border rounded ${formData.claimInformation?.autoAccident !== true ? 'bg-gray-100 cursor-not-allowed opacity-50' : ''}`}
-                  disabled={formData.claimInformation?.autoAccident !== true}
-                >
-                  <option value="">State</option>
-                  {US_STATES.map(state => (
-                    <option key={state.code} value={state.code}>
-                      {state.code} - {state.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex items-center gap-4">
-                <span className="text-sm">c. Other Accident?</span>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="w-4 h-4" />
-                  <span className="text-sm">YES</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="w-4 h-4" />
-                  <span className="text-sm">NO</span>
-                </label>
-              </div>
-            </div>
+            <p className="text-sm text-gray-600">No — accident, employment, and other conditional claims are outside this form's supported workflow.</p>
           </div>
 
           {/* Box 10d */}
-          <div className="pb-3">
+          <div className="pb-3 opacity-60">
             <label className="text-sm font-bold text-[#c41e3a] mb-2 block">10d. CLAIM CODES (Designated by NUCC)</label>
-            <input type="text" className="w-full p-2 border rounded" />
+            <p className="text-sm text-gray-600">Not applicable to the supported claim type.</p>
           </div>
 
           {/* Box 12 */}
@@ -1771,81 +1917,58 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
           </div>
 
           {/* Box 14 */}
-          <div className="pb-3">
+          <div className="pb-3 opacity-60">
             <label className="text-sm font-bold text-[#c41e3a] mb-2 block">14. DATE OF CURRENT ILLNESS, INJURY, or PREGNANCY (LMP)</label>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">MM</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-                <span className="text-sm">DD</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-                <span className="text-sm">YY</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-              </div>
-              <input type="text" placeholder="QUAL" className="w-24 p-2 border rounded" />
-            </div>
+            <p className="text-sm text-gray-600">Not applicable to the supported claim type.</p>
           </div>
 
           {/* Box 15 */}
-          <div className="pb-3">
+          <div className="pb-3 opacity-60">
             <label className="text-sm font-bold text-[#c41e3a] mb-2 block">15. OTHER DATE</label>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">MM</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-                <span className="text-sm">DD</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-                <span className="text-sm">YY</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-              </div>
-              <input type="text" placeholder="QUAL" className="w-24 p-2 border rounded" />
-            </div>
+            <p className="text-sm text-gray-600">Not applicable to the supported claim type.</p>
           </div>
 
           {/* Box 16 */}
-          <div className="pb-3">
+          <div className="pb-3 opacity-60">
             <label className="text-sm font-bold text-[#c41e3a] mb-2 block">16. Dates patient unable to work in current occupation</label>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold">FROM</span>
-                <span className="text-sm">MM</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-                <span className="text-sm">DD</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-                <span className="text-sm">YY</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold">TO</span>
-                <span className="text-sm">MM</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-                <span className="text-sm">DD</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-                <span className="text-sm">YY</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-              </div>
-            </div>
+            <p className="text-sm text-gray-600">Not applicable to the supported claim type.</p>
           </div>
 
           {/* Box 17 */}
           <div className="pb-3">
             <label className="text-sm font-bold text-[#c41e3a] mb-2 block">17. NAME OF REFERRING PROVIDER OR OTHER SOURCE</label>
-            <input
-              type="text"
-              value={formData.referring?.lastName || ''}
-              onChange={(e) => updateField(['referring', 'lastName'], e.target.value)}
-              className="w-full p-2 border rounded"
-            />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input
+                type="text"
+                value={formData.referring?.firstName || ''}
+                onChange={(e) => updateField(['referring', 'firstName'], e.target.value)}
+                placeholder="First name"
+                className="w-full p-2 border rounded"
+              />
+              <input
+                type="text"
+                value={formData.referring?.middleName || ''}
+                onChange={(e) => updateField(['referring', 'middleName'], e.target.value)}
+                placeholder="Middle name"
+                className="w-full p-2 border rounded"
+              />
+              <input
+                type="text"
+                value={formData.referring?.lastName || ''}
+                onChange={(e) => updateField(['referring', 'lastName'], e.target.value)}
+                placeholder="Last name"
+                className="w-full p-2 border rounded"
+              />
+            </div>
           </div>
 
           {/* Box 17a */}
           <div className="pb-3">
-            <label className="text-sm font-bold text-[#c41e3a] mb-2 block">17a. NPI</label>
+            <label className="text-sm font-bold text-[#c41e3a] mb-2 block">17a. OTHER ID</label>
             <input
               type="text"
-              value={formData.referring?.npi || ''}
-              onChange={(e) => updateField(['referring', 'npi'], e.target.value)}
-              maxLength={10}
+              value={formData.referring?.commercialNumber || ''}
+              onChange={(e) => updateField(['referring', 'commercialNumber'], e.target.value)}
               className="w-full p-2 border rounded"
             />
           </div>
@@ -1853,94 +1976,36 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
           {/* Box 17b */}
           <div className="pb-3">
             <label className="text-sm font-bold text-[#c41e3a] mb-2 block">17b. NPI</label>
-            <input type="text" maxLength={10} className="w-full p-2 border rounded" />
+            <input
+              type="text"
+              value={formData.referring?.npi || ''}
+              onChange={(e) => updateField(['referring', 'npi'], e.target.value.replace(/\D/g, '').slice(0, 10))}
+              maxLength={10}
+              className="w-full p-2 border rounded"
+            />
           </div>
 
           {/* Box 18 */}
-          <div className="pb-3">
+          <div className="pb-3 opacity-60">
             <label className="text-sm font-bold text-[#c41e3a] mb-2 block">18. Hospitalization Dates Related to Current Services</label>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold">FROM</span>
-                <span className="text-sm">MM</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-                <span className="text-sm">DD</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-                <span className="text-sm">YY</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold">TO</span>
-                <span className="text-sm">MM</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-                <span className="text-sm">DD</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-                <span className="text-sm">YY</span>
-                <input type="text" maxLength={2} className="w-16 p-2 border rounded text-center" />
-              </div>
-            </div>
+            <p className="text-sm text-gray-600">Not applicable to the supported claim type.</p>
           </div>
 
           {/* Box 19 */}
           <div className="pb-3">
             <label className="text-sm font-bold text-[#c41e3a] mb-2 block">19. ADDITIONAL CLAIM INFORMATION (Designated by NUCC)</label>
-            <input type="text" className="w-full p-2 border rounded" />
+            <input
+              type="text"
+              value={formData.claimInformation?.claimNote?.additionalInformation || ''}
+              onChange={(e) => updateField(['claimInformation', 'claimNote', 'additionalInformation'], e.target.value)}
+              className="w-full p-2 border rounded"
+            />
           </div>
 
           {/* Box 20 */}
-          <div className="pb-3">
+          <div className="pb-3 opacity-60">
             <label className="text-sm font-bold text-[#c41e3a] mb-2 block">20. OUTSIDE LAB?</label>
-            <div className="flex items-center gap-4">
-              <div className="flex gap-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.claimInformation?.outsideLab === true}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        // When YES is checked, ensure NO is unchecked
-                        updateField(['claimInformation', 'outsideLab'], true);
-                      } else {
-                        updateField(['claimInformation', 'outsideLab'], undefined);
-                      }
-                    }}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm">YES</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.claimInformation?.outsideLab === false}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        // When NO is checked, ensure YES is unchecked and clear charges
-                        updateField(['claimInformation', 'outsideLab'], false);
-                        updateField(['claimInformation', 'outsideLabCharges'], undefined);
-                      } else {
-                        updateField(['claimInformation', 'outsideLab'], undefined);
-                      }
-                    }}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm">NO</span>
-                </label>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm">$</span>
-                <input
-                  type="text"
-                  value={formData.claimInformation?.outsideLabCharges ? formatCurrency(formData.claimInformation.outsideLabCharges) : ''}
-                  onChange={(e) => {
-                    const cents = parseCurrencyToCents(e.target.value);
-                    updateField(['claimInformation', 'outsideLabCharges'], cents);
-                  }}
-                  placeholder="0.00"
-                  className={`w-32 p-2 border rounded ${formData.claimInformation?.outsideLab !== true ? 'bg-gray-100 cursor-not-allowed opacity-50' : ''}`}
-                  disabled={formData.claimInformation?.outsideLab !== true}
-                />
-              </div>
-            </div>
+            <p className="text-sm text-gray-600">No — outside-lab claims are outside this form's supported workflow.</p>
           </div>
 
           {/* Box 21 */}
@@ -1965,8 +2030,23 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
           <div className="pb-3">
             <label className="text-sm font-bold text-[#c41e3a] mb-2 block">22. RESUBMISSION CODE</label>
             <div className="grid grid-cols-2 gap-4">
-              <input type="text" placeholder="Resubmission Code" className="p-2 border rounded" />
-              <input type="text" placeholder="ORIGINAL REF. NO." className="p-2 border rounded" />
+              <select
+                value={formData.claimInformation?.claimFrequencyCode || '1'}
+                onChange={(e) => updateField(['claimInformation', 'claimFrequencyCode'], e.target.value)}
+                className="p-2 border rounded"
+              >
+                <option value="1">1 - Original claim</option>
+                <option value="7">7 - Replacement claim</option>
+                <option value="8">8 - Void claim</option>
+              </select>
+              <input
+                type="text"
+                value={formData.claimInformation?.claimSupplementalInformation?.claimControlNumber || ''}
+                onChange={(e) => updateField(['claimInformation', 'claimSupplementalInformation', 'claimControlNumber'], e.target.value)}
+                placeholder="ORIGINAL PAYER CLAIM CONTROL NO."
+                disabled={(formData.claimInformation?.claimFrequencyCode || '1') === '1'}
+                className={`p-2 border rounded ${(formData.claimInformation?.claimFrequencyCode || '1') === '1' ? 'bg-gray-100 text-gray-500' : ''}`}
+              />
             </div>
           </div>
 
@@ -2161,22 +2241,14 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                       <div className="flex items-center justify-center h-9">
                         <input
                           type="checkbox"
-                          checked={(() => {
-                            const desc = line.professionalService?.description || '';
-                            return desc.includes('EMG:Y') || desc.includes('EMG:1');
-                          })()}
+                          checked={line.professionalService?.emergencyIndicator === 'Y'}
                           onChange={(e) => {
                             const sl = [...effectiveServiceLines];
-                            const currentDesc = sl[index].professionalService?.description || '';
-                            let newDesc = currentDesc.replace(/EMG:[Y1]/g, '').trim();
-                            if (e.target.checked) {
-                              newDesc = newDesc ? `${newDesc} EMG:Y` : 'EMG:Y';
-                            }
                             sl[index] = {
                               ...sl[index],
                               professionalService: {
                                 ...sl[index].professionalService,
-                                description: newDesc || undefined
+                                emergencyIndicator: e.target.checked ? 'Y' : undefined
                               }
                             };
                             updateField(['claimInformation', 'serviceLines'], sl);
@@ -2203,11 +2275,11 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         type="text"
                         value={line.professionalService?.procedureCode || ''}
                         onChange={(e) => {
-                          const value = e.target.value.toUpperCase().slice(0, 5);
+                          const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
                           updateServiceLine(index, 'professionalService.procedureCode', value);
                         }}
                         placeholder="Code"
-                        maxLength={5}
+                        maxLength={6}
                         className="w-full p-1.5 border rounded text-sm"
                       />
                     </div>
@@ -2225,11 +2297,16 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                           </div>
                         </div>
                       </label>
-                      <select
-                        value={line.professionalService?.procedureModifiers?.[0] || ''}
+                      <input
+                        type="text"
+                        value={(line.professionalService?.procedureModifiers || []).join(' ')}
                         onChange={(e) => {
-                          const value = e.target.value;
-                          const modifiers = value ? [value] : [];
+                          const modifiers = e.target.value
+                            .toUpperCase()
+                            .split(/[\s,]+/)
+                            .map((value) => value.replace(/[^A-Z0-9]/g, '').slice(0, 2))
+                            .filter(Boolean)
+                            .slice(0, 4);
                           const sl = [...effectiveServiceLines];
                           sl[index] = {
                             ...sl[index],
@@ -2240,12 +2317,10 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                           };
                           updateField(['claimInformation', 'serviceLines'], sl);
                         }}
+                        placeholder="95 GT"
+                        maxLength={11}
                         className="w-full p-1.5 border rounded text-sm"
-                      >
-                        <option value="">-</option>
-                        <option value="95">95</option>
-                        <option value="RR">RR</option>
-                      </select>
+                      />
                     </div>
 
                     {/* e. Diagnosis Pointer */}
@@ -2261,32 +2336,33 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                           </div>
                         </div>
                       </label>
-                      <select
-                        value={line.professionalService?.compositeDiagnosisCodePointers?.diagnosisCodePointers?.[0] || ''}
+                      <input
+                        type="text"
+                        value={(line.professionalService?.compositeDiagnosisCodePointers?.diagnosisCodePointers || [])
+                          .map(diagnosisPointerForDisplay)
+                          .join('')}
                         onChange={(e) => {
+                          const pointers = e.target.value
+                            .toUpperCase()
+                            .replace(/[^A-L]/g, '')
+                            .slice(0, 4)
+                            .split('');
                           const sl = [...effectiveServiceLines];
                           sl[index] = {
                             ...sl[index],
                             professionalService: {
                               ...sl[index].professionalService,
                               compositeDiagnosisCodePointers: {
-                                diagnosisCodePointers: [e.target.value]
+                                diagnosisCodePointers: pointers
                               }
                             }
                           };
                           updateField(['claimInformation', 'serviceLines'], sl);
                         }}
+                        placeholder="A"
+                        maxLength={4}
                         className="w-full p-1.5 border rounded text-sm"
-                      >
-                        <option value="">-</option>
-                        {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'].map((letter, idx) => {
-                          const diagnosisCode = diagnoses[idx]?.diagnosisCode || '';
-                          const displayText = diagnosisCode ? `${letter} (${diagnosisCode})` : letter;
-                          return (
-                            <option key={letter} value={letter}>{displayText}</option>
-                          );
-                        })}
-                      </select>
+                      />
                     </div>
                   </div>
 
@@ -2337,11 +2413,13 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         type="text"
                         value={line.professionalService?.serviceUnitCount || ''}
                         onChange={(e) => {
-                          const value = e.target.value.replace(/\D/g, '').slice(0, 2);
-                          updateServiceLine(index, 'professionalService.serviceUnitCount', value);
+                          const value = e.target.value.replace(/[^\d.]/g, '');
+                          if (/^\d{0,3}(\.\d{0,3})?$/.test(value)) {
+                            updateServiceLine(index, 'professionalService.serviceUnitCount', value);
+                          }
                         }}
-                        placeholder="##"
-                        maxLength={2}
+                        placeholder="1"
+                        maxLength={7}
                         className="w-full p-1.5 border rounded text-sm text-center"
                       />
                     </div>
@@ -2361,8 +2439,21 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                       </label>
                       <input
                         type="text"
+                        value={line.professionalService?.epsdtIndicator || ''}
+                        onChange={(e) => {
+                          const value = e.target.value.toUpperCase().replace(/[^Y]/g, '').slice(0, 1);
+                          const sl = [...effectiveServiceLines];
+                          sl[index] = {
+                            ...sl[index],
+                            professionalService: {
+                              ...sl[index].professionalService,
+                              epsdtIndicator: value === 'Y' ? 'Y' : undefined
+                            }
+                          };
+                          updateField(['claimInformation', 'serviceLines'], sl);
+                        }}
                         maxLength={1}
-                        placeholder="?"
+                        placeholder="N"
                         className="w-full p-1.5 border rounded text-sm text-center"
                       />
                     </div>
@@ -2404,16 +2495,82 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                       </label>
                       <input
                         type="text"
-                        value={formData.rendering?.npi || ''}
+                        value={line.renderingProvider?.npi || ''}
                         onChange={(e) => {
                           const value = e.target.value.replace(/\D/g, '').slice(0, 10);
-                          updateField(['rendering', 'npi'], value);
+                          const sl = [...effectiveServiceLines];
+                          sl[index] = {
+                            ...sl[index],
+                            renderingProvider: {
+                              ...sl[index].renderingProvider,
+                              providerType: 'RenderingProvider',
+                              npi: value
+                            }
+                          };
+                          updateField(['claimInformation', 'serviceLines'], sl);
                         }}
                         placeholder="NPI (10 digits)"
                         maxLength={10}
                         className="w-full p-1.5 border rounded text-sm"
                       />
                     </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
+                    <input
+                      type="text"
+                      value={line.renderingProvider?.firstName || ''}
+                      onChange={(e) => {
+                        const sl = [...effectiveServiceLines];
+                        sl[index] = {
+                          ...sl[index],
+                          renderingProvider: {
+                            ...sl[index].renderingProvider,
+                            providerType: 'RenderingProvider',
+                            firstName: e.target.value
+                          }
+                        };
+                        updateField(['claimInformation', 'serviceLines'], sl);
+                      }}
+                      placeholder="Rendering provider first name"
+                      className="p-1.5 border rounded text-sm"
+                    />
+                    <input
+                      type="text"
+                      value={line.renderingProvider?.lastName || ''}
+                      onChange={(e) => {
+                        const sl = [...effectiveServiceLines];
+                        sl[index] = {
+                          ...sl[index],
+                          renderingProvider: {
+                            ...sl[index].renderingProvider,
+                            providerType: 'RenderingProvider',
+                            lastName: e.target.value
+                          }
+                        };
+                        updateField(['claimInformation', 'serviceLines'], sl);
+                      }}
+                      placeholder="Rendering provider last name"
+                      className="p-1.5 border rounded text-sm"
+                    />
+                    <input
+                      type="text"
+                      value={line.renderingProvider?.taxonomyCode || ''}
+                      onChange={(e) => {
+                        const sl = [...effectiveServiceLines];
+                        sl[index] = {
+                          ...sl[index],
+                          renderingProvider: {
+                            ...sl[index].renderingProvider,
+                            providerType: 'RenderingProvider',
+                            taxonomyCode: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10)
+                          }
+                        };
+                        updateField(['claimInformation', 'serviceLines'], sl);
+                      }}
+                      placeholder="Rendering taxonomy"
+                      maxLength={10}
+                      className="p-1.5 border rounded text-sm"
+                    />
                   </div>
                 </div>
               ))}
@@ -2441,10 +2598,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                     onChange={(e) => {
                       if (e.target.checked) {
                         updateField(['billing', 'taxIdType'], 'SSN');
-                        // Clear the value if switching from EIN
-                        if (formData.billing?.taxIdType === 'EIN') {
-                          updateField(['billing', 'employerId'], '');
-                        }
+                        updateField(['billing', 'employerId'], undefined);
                       } else {
                         updateField(['billing', 'taxIdType'], undefined);
                       }
@@ -2460,10 +2614,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                     onChange={(e) => {
                       if (e.target.checked) {
                         updateField(['billing', 'taxIdType'], 'EIN');
-                        // Clear the value if switching from SSN
-                        if (formData.billing?.taxIdType === 'SSN') {
-                          updateField(['billing', 'employerId'], '');
-                        }
+                        updateField(['billing', 'ssn'], undefined);
                       } else {
                         updateField(['billing', 'taxIdType'], undefined);
                       }
@@ -2475,44 +2626,45 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               </div>
               <div>
                 {(formData.billing?.taxIdType === 'EIN' || !formData.billing?.taxIdType) ? (
-                  <select
+                  <>
+                  <input
+                    type="text"
+                    list="billing-ein-options"
                     value={formData.billing?.employerId || ''}
-                    onChange={(e) => {
-                      updateField(['billing', 'employerId'], e.target.value);
-                    }}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="">Select EIN</option>
-                    <option value="994567305">99-4567305 (RHMG, PLLC)</option>
-                    <option value="394343101">39-4343101 (RHMG, LLC - NJ)</option>
-                    <option value="394724400">39-4724400 (Alexander Marsh, M.D., PC)</option>
-                  </select>
+                    onChange={(e) => updateField(['billing', 'employerId'], e.target.value.replace(/\D/g, '').slice(0, 9))}
+                    placeholder="9-digit EIN"
+                    maxLength={9}
+                    className={`w-full p-2 border rounded ${formData.billing?.employerId && !validateSSN(formData.billing.employerId) ? 'border-red-500' : ''}`}
+                  />
+                  <datalist id="billing-ein-options">
+                    <option value="994567305">RHMG, PLLC</option>
+                    <option value="394343101">RHMG, LLC - NJ</option>
+                    <option value="394724400">Alexander Marsh, M.D., PC</option>
+                  </datalist>
+                  </>
                 ) : (
                   <input
                     type="text"
-                    value={
-                      formData.billing?.employerId
-                        ? formData.billing?.taxIdType === 'SSN'
-                          ? formatSSN(formData.billing.employerId)
-                          : formData.billing.employerId
-                        : ''
-                    }
+                    value={formData.billing?.ssn ? formatSSN(formData.billing.ssn) : ''}
                     onChange={(e) => {
                       const digits = e.target.value.replace(/\D/g, '');
                       // Limit to 9 digits
                       const limited = digits.slice(0, 9);
-                      updateField(['billing', 'employerId'], limited);
+                      updateField(['billing', 'ssn'], limited);
                     }}
                     className={`w-full p-2 border rounded ${
-                      formData.billing?.taxIdType === 'SSN' && formData.billing?.employerId && !validateSSN(formData.billing.employerId)
+                      formData.billing?.ssn && !validateSSN(formData.billing.ssn)
                         ? 'border-red-500'
                         : ''
                     }`}
                     placeholder={formData.billing?.taxIdType === 'SSN' ? 'XXX-XX-XXXX' : 'Enter Tax ID'}
                   />
                 )}
-                {formData.billing?.taxIdType === 'SSN' && formData.billing?.employerId && !validateSSN(formData.billing.employerId) && (
+                {formData.billing?.taxIdType === 'SSN' && formData.billing?.ssn && !validateSSN(formData.billing.ssn) && (
                   <p className="text-xs text-red-500 mt-1">SSN must be 9 digits</p>
+                )}
+                {(formData.billing?.taxIdType === 'EIN' || !formData.billing?.taxIdType) && formData.billing?.employerId && !validateSSN(formData.billing.employerId) && (
+                  <p className="text-xs text-red-500 mt-1">EIN must be 9 digits</p>
                 )}
               </div>
             </div>
@@ -2539,10 +2691,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   checked={formData.claimInformation?.planParticipationCode === 'A'}
                   onChange={(e) => {
                     if (e.target.checked) {
-                      // When YES is checked, ensure NO is unchecked
                       updateField(['claimInformation', 'planParticipationCode'], 'A');
-                    } else {
-                      updateField(['claimInformation', 'planParticipationCode'], '');
                     }
                   }}
                   className="w-4 h-4"
@@ -2555,10 +2704,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   checked={formData.claimInformation?.planParticipationCode === 'C'}
                   onChange={(e) => {
                     if (e.target.checked) {
-                      // When NO is checked, ensure YES is unchecked
                       updateField(['claimInformation', 'planParticipationCode'], 'C');
-                    } else {
-                      updateField(['claimInformation', 'planParticipationCode'], '');
                     }
                   }}
                   className="w-4 h-4"
@@ -2640,31 +2786,38 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               />
               <input
                 type="text"
-                value={formData.billing?.address?.address1 || ''}
-                onChange={(e) => updateField(['billing', 'address', 'address1'], e.target.value)}
+                value={formData.claimInformation?.serviceFacilityLocation?.address?.address1 || ''}
+                onChange={(e) => updateField(['claimInformation', 'serviceFacilityLocation', 'address', 'address1'], e.target.value)}
                 placeholder="Street Address"
+                className="w-full p-2 border rounded"
+              />
+              <input
+                type="text"
+                value={formData.claimInformation?.serviceFacilityLocation?.address?.address2 || ''}
+                onChange={(e) => updateField(['claimInformation', 'serviceFacilityLocation', 'address', 'address2'], e.target.value)}
+                placeholder="Address Line 2"
                 className="w-full p-2 border rounded"
               />
               <div className="grid grid-cols-3 gap-4">
                 <input
                   type="text"
-                  value={formData.billing?.address?.city || ''}
-                  onChange={(e) => updateField(['billing', 'address', 'city'], e.target.value)}
+                  value={formData.claimInformation?.serviceFacilityLocation?.address?.city || ''}
+                  onChange={(e) => updateField(['claimInformation', 'serviceFacilityLocation', 'address', 'city'], e.target.value)}
                   placeholder="City"
                   className="p-2 border rounded"
                 />
                 <input
                   type="text"
-                  value={formData.billing?.address?.state || ''}
-                  onChange={(e) => updateField(['billing', 'address', 'state'], e.target.value.toUpperCase())}
+                  value={formData.claimInformation?.serviceFacilityLocation?.address?.state || ''}
+                  onChange={(e) => updateField(['claimInformation', 'serviceFacilityLocation', 'address', 'state'], e.target.value.toUpperCase())}
                   placeholder="State"
                   maxLength={2}
                   className="p-2 border rounded uppercase"
                 />
                 <input
                   type="text"
-                  value={formData.billing?.address?.postalCode || ''}
-                  onChange={(e) => updateField(['billing', 'address', 'postalCode'], e.target.value)}
+                  value={formData.claimInformation?.serviceFacilityLocation?.address?.postalCode || ''}
+                  onChange={(e) => updateField(['claimInformation', 'serviceFacilityLocation', 'address', 'postalCode'], e.target.value.replace(/\D/g, '').slice(0, 9))}
                   placeholder="ZIP Code"
                   className="p-2 border rounded"
                 />
@@ -2677,9 +2830,25 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   if (!formData.claimInformation?.serviceFacilityLocation) {
                     updateField(['claimInformation', 'serviceFacilityLocation'], {});
                   }
-                  updateField(['claimInformation', 'serviceFacilityLocation', 'npi'], e.target.value);
+                  updateField(['claimInformation', 'serviceFacilityLocation', 'npi'], e.target.value.replace(/\D/g, '').slice(0, 10));
                 }}
                 placeholder="NPI"
+                className="w-full p-2 border rounded"
+              />
+              <input
+                type="text"
+                value={formData.claimInformation?.serviceFacilityLocation?.phoneName || ''}
+                onChange={(e) => updateField(['claimInformation', 'serviceFacilityLocation', 'phoneName'], e.target.value)}
+                placeholder="Facility Contact Name"
+                className="w-full p-2 border rounded"
+              />
+              <input
+                type="tel"
+                value={formData.claimInformation?.serviceFacilityLocation?.phoneNumber ? formatPhoneNumber(formData.claimInformation.serviceFacilityLocation.phoneNumber) : ''}
+                onChange={(e) => {
+                  updateField(['claimInformation', 'serviceFacilityLocation', 'phoneNumber'], e.target.value.replace(/\D/g, ''));
+                }}
+                placeholder="Facility Phone Number"
                 className="w-full p-2 border rounded"
               />
             </div>
@@ -2703,6 +2872,13 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 placeholder="Address"
                 className="w-full p-2 border rounded"
               />
+              <input
+                type="text"
+                value={formData.billing?.address?.address2 || ''}
+                onChange={(e) => updateField(['billing', 'address', 'address2'], e.target.value)}
+                placeholder="Address Line 2"
+                className="w-full p-2 border rounded"
+              />
               <div className="grid grid-cols-3 gap-4">
                 <input
                   type="text"
@@ -2722,11 +2898,18 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 <input
                   type="text"
                   value={formData.billing?.address?.postalCode || ''}
-                  onChange={(e) => updateField(['billing', 'address', 'postalCode'], e.target.value)}
+                  onChange={(e) => updateField(['billing', 'address', 'postalCode'], e.target.value.replace(/\D/g, '').slice(0, 9))}
                   placeholder="ZIP"
                   className="p-2 border rounded"
                 />
               </div>
+              <input
+                type="text"
+                value={formData.billing?.contactInformation?.name || ''}
+                onChange={(e) => updateField(['billing', 'contactInformation', 'name'], e.target.value)}
+                placeholder="Billing Contact Name"
+                className="w-full p-2 border rounded"
+              />
               <input
                 type="tel"
                 value={formData.billing?.contactInformation?.phoneNumber ? formatPhoneNumber(formData.billing.contactInformation.phoneNumber) : ''}
@@ -2744,9 +2927,24 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               <input
                 type="text"
                 value={formData.billing?.npi || ''}
-                onChange={(e) => updateField(['billing', 'npi'], e.target.value)}
+                onChange={(e) => updateField(['billing', 'npi'], e.target.value.replace(/\D/g, '').slice(0, 10))}
                 maxLength={10}
                 placeholder="NPI"
+                className="w-full p-2 border rounded"
+              />
+              <input
+                type="text"
+                value={formData.billing?.taxonomyCode || ''}
+                onChange={(e) => updateField(['billing', 'taxonomyCode'], e.target.value.toUpperCase().slice(0, 10))}
+                maxLength={10}
+                placeholder="Taxonomy Code (required)"
+                className="w-full p-2 border rounded"
+              />
+              <input
+                type="email"
+                value={formData.billing?.contactInformation?.email || ''}
+                onChange={(e) => updateField(['billing', 'contactInformation', 'email'], e.target.value)}
+                placeholder="Billing Contact Email"
                 className="w-full p-2 border rounded"
               />
             </div>
