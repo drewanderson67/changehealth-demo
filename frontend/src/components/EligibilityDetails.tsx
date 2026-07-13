@@ -732,7 +732,7 @@ export default function EligibilityDetails({ response }: Props) {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {Object.entries(organizedCopays).map(([serviceKey, networks], rowIdx) => {
+                {Object.entries(organizedCopays).map(([serviceKey, networks]) => {
                   const serviceCodes = serviceKey.split(',');
                   const serviceNames = serviceCodes.map(code => SERVICE_TYPE_NAMES[code] || code).join(', ');
                   
