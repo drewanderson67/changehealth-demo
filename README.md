@@ -31,7 +31,7 @@ A full-stack healthcare claims management application with integrated eligibilit
 ## 🎨 Tech Stack
 
 **Frontend:**
-- React 18 + TypeScript
+- React 19 + TypeScript
 - Vite (build tool)
 - Tailwind CSS (styling)
 - Reperio Health brand colors (Purple: #9e32e2, Blue: #2a5cb2)
@@ -58,7 +58,6 @@ changehealth/
 │   │   ├── server.ts                 # Express server (port 3001)
 │   │   ├── routes/
 │   │   │   ├── eligibility.ts        # Eligibility API routes
-│   │   │   ├── payer.ts              # Payer lookup routes
 │   │   │   └── claims.ts             # Claims validation/submission routes
 │   │   └── services/
 │   │       ├── optum.ts              # Optum API service with OAuth2
@@ -71,7 +70,6 @@ changehealth/
 │   ├── src/
 │   │   ├── App.tsx                   # Main app with tab navigation
 │   │   ├── components/
-│   │   │   ├── CredentialsForm.tsx   # API credentials input
 │   │   │   ├── EligibilityForm.tsx   # Patient eligibility form
 │   │   │   ├── EligibilityDetails.tsx # Detailed eligibility response
 │   │   │   ├── ClaimForm.tsx         # CMS 1500 claim form
@@ -80,8 +78,7 @@ changehealth/
 │   │   │   └── EnvironmentSelector.tsx # Sandbox/Production toggle
 │   │   ├── services/
 │   │   │   ├── api.ts                # Eligibility API service
-│   │   │   ├── claimsApi.ts          # Claims API service
-│   │   │   └── payerApi.ts           # Payer lookup service
+│   │   │   └── claimsApi.ts          # Claims API service
 │   │   └── types/
 │   │       ├── eligibility.ts        # Eligibility type definitions
 │   │       └── claims.ts             # Claims type definitions
@@ -156,21 +153,29 @@ PORT=3001
 ### Prerequisites
 
 - **Docker & Docker Compose**
-- **Optum API credentials** (Client ID and Client Secret)
+- **Optum API credentials** for sandbox eligibility, production eligibility, and production payer-list APIs
 
 ### 1. Setup
 
-Create `backend/.env`:
+Copy the example and add your credentials to `backend/.env`:
+
 ```bash
-OPTUM_CLIENT_ID=your_client_id
-OPTUM_CLIENT_SECRET=your_client_secret
-OPTUM_ENV=sandbox
+cp backend/.env.example backend/.env
+```
+
+```env
+OPTUM_SANDBOX_CLIENT_ID=your_sandbox_client_id
+OPTUM_SANDBOX_CLIENT_SECRET=your_sandbox_client_secret
+OPTUM_PROD_ELIGIBILITY_CLIENT_ID=your_production_eligibility_client_id
+OPTUM_PROD_ELIGIBILITY_CLIENT_SECRET=your_production_eligibility_client_secret
+OPTUM_PROD_PAYER_CLIENT_ID=your_production_payer_client_id
+OPTUM_PROD_PAYER_CLIENT_SECRET=your_production_payer_client_secret
 PORT=3001
 ```
 
 Start everything:
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
 - **Frontend**: http://localhost:9000
@@ -182,8 +187,7 @@ No root `.env` is needed locally -- defaults in `docker-compose.yml` handle it.
 
 Open your browser to **http://localhost:9000** and:
 1. Select **Sandbox** or **Production** environment
-2. Enter your Optum API credentials (or use environment variables)
-3. Choose a tab:
+2. Choose a tab:
    - **Eligibility Checker** - Verify patient insurance coverage
    - **Claim Form** - Submit CMS 1500 professional claims
    - **Claims Status** - Track claim processing (coming soon)
@@ -309,20 +313,24 @@ When in **Sandbox mode**, the form can use test data for validation:
 
 ## 🔑 API Credentials
 
-### Option 1: Environment Variables (Recommended)
-Set in `backend/.env`:
+Credentials are configured only through `backend/.env`; the UI does not accept or store API credentials.
+
 ```env
-OPTUM_CLIENT_ID=your_client_id
-OPTUM_CLIENT_SECRET=your_client_secret
-OPTUM_ENV=sandbox
+OPTUM_SANDBOX_CLIENT_ID=your_sandbox_client_id
+OPTUM_SANDBOX_CLIENT_SECRET=your_sandbox_client_secret
+OPTUM_PROD_ELIGIBILITY_CLIENT_ID=your_production_eligibility_client_id
+OPTUM_PROD_ELIGIBILITY_CLIENT_SECRET=your_production_eligibility_client_secret
+OPTUM_PROD_PAYER_CLIENT_ID=your_production_payer_client_id
+OPTUM_PROD_PAYER_CLIENT_SECRET=your_production_payer_client_secret
 PORT=3001
 ```
 
-### Option 2: UI Form
-- Click "Enter Manually" in the credentials section
-- Input credentials directly in the UI
-- Credentials are used for OAuth2 token exchange (not stored)
-- Separate credentials for Eligibility and Payer Lookup APIs
+Credential selection is based on the environment sent by the frontend:
+
+- Sandbox eligibility and professional claims use `OPTUM_SANDBOX_CLIENT_ID` and `OPTUM_SANDBOX_CLIENT_SECRET`.
+- Production eligibility and professional claims use `OPTUM_PROD_ELIGIBILITY_CLIENT_ID` and `OPTUM_PROD_ELIGIBILITY_CLIENT_SECRET`.
+- Payer lookup, directory, and export operations always use `OPTUM_PROD_PAYER_CLIENT_ID` and `OPTUM_PROD_PAYER_CLIENT_SECRET` against the production payer-list endpoint.
+- The UI defaults to Sandbox and stores the selected environment in browser local storage. There is no `OPTUM_ENV` backend variable.
 
 ## 📡 API Endpoints
 
@@ -330,8 +338,9 @@ PORT=3001
 
 #### Eligibility
 - **POST** `/api/eligibility/check-eligibility` - Check patient eligibility
-- **POST** `/api/eligibility/list-payers` - Get all available payers
+- **POST** `/api/eligibility/get-all-payers` - Get all available payers
 - **POST** `/api/eligibility/lookup-payer` - Lookup specific payer details
+- **POST** `/api/eligibility/export-payers` - Export the payer directory
 
 #### Claims
 - **POST** `/api/claims/validate` - Validate claim data
@@ -368,11 +377,12 @@ Field-by-field mapping between CMS 1500 form and API:
 ## 🛠️ Development (without Docker)
 
 ```bash
-# Backend
-cd backend && npm install && npm run dev    # runs on port 3001
+# Backend (terminal 1; reads backend/.env and runs on port 3001)
+cd backend && npm install && npm run dev
 
-# Frontend
-cd frontend && npm install && npm run dev   # runs on port 5173
+# Frontend (terminal 2; runs on port 5173 and targets the native backend)
+cd frontend && npm install
+VITE_API_BASE_URL=http://localhost:3001 npm run dev
 ```
 
 ## ⚙️ Environment Variables
@@ -381,10 +391,13 @@ cd frontend && npm install && npm run dev   # runs on port 5173
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `3001` | Backend server port |
-| `OPTUM_CLIENT_ID` | - | Optum API client ID |
-| `OPTUM_CLIENT_SECRET` | - | Optum API client secret |
-| `OPTUM_ENV` | `sandbox` | `sandbox` or `production` |
+| `PORT` | `3002` in code | Backend server port; set to `3001` for Docker Compose |
+| `OPTUM_SANDBOX_CLIENT_ID` | - | Client ID for sandbox eligibility and claims |
+| `OPTUM_SANDBOX_CLIENT_SECRET` | - | Client secret for sandbox eligibility and claims |
+| `OPTUM_PROD_ELIGIBILITY_CLIENT_ID` | - | Client ID for production eligibility and claims |
+| `OPTUM_PROD_ELIGIBILITY_CLIENT_SECRET` | - | Client secret for production eligibility and claims |
+| `OPTUM_PROD_PAYER_CLIENT_ID` | - | Client ID for production payer-list operations |
+| `OPTUM_PROD_PAYER_CLIENT_SECRET` | - | Client secret for production payer-list operations |
 
 ### Docker Compose (root `.env`, only needed on EC2)
 

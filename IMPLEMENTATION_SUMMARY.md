@@ -20,7 +20,7 @@ Successfully implemented the **Optum Enhanced Eligibility Checker** as specified
 **Features:**
 - ✅ OAuth2 authentication with Optum sandbox API
 - ✅ Token caching per client ID (prevents unnecessary token requests)
-- ✅ Accepts credentials via request body OR environment variables
+- ✅ Resolves sandbox, production eligibility, and production payer credentials from backend environment variables
 - ✅ Error handling with detailed error messages
 - ✅ Dockerized with hot-reload support
 - ✅ CORS enabled for frontend communication
@@ -29,8 +29,8 @@ Successfully implemented the **Optum Enhanced Eligibility Checker** as specified
 
 **Files Created:**
 - `frontend/src/App.tsx` - Main application component
-- `frontend/src/components/CredentialsForm.tsx` - API credentials input
 - `frontend/src/components/EligibilityForm.tsx` - Eligibility check form
+- `frontend/src/components/EnvironmentSelector.tsx` - Sandbox/production selector
 - `frontend/src/components/ResponseDisplay.tsx` - Response viewer
 - `frontend/src/services/api.ts` - API service layer
 - `frontend/src/types/eligibility.ts` - TypeScript type definitions
@@ -40,7 +40,7 @@ Successfully implemented the **Optum Enhanced Eligibility Checker** as specified
 
 **Features:**
 - ✅ Clean, responsive UI with Tailwind CSS
-- ✅ Toggle between manual credentials and environment variables
+- ✅ Sandbox/production environment selector
 - ✅ Form validation with HTML5 patterns
 - ✅ Real-time loading states
 - ✅ Error and success response display
@@ -52,14 +52,14 @@ Successfully implemented the **Optum Enhanced Eligibility Checker** as specified
 **Files Created:**
 - `docker-compose.yml` - Docker Compose orchestration
 - `backend/Dockerfile` - Backend container image
-- `backend/.dockerignore` - Files to exclude from image
+- `frontend/Dockerfile` - Frontend container image
 
 **Features:**
-- ✅ One-command backend startup
+- ✅ One-command backend and frontend startup
 - ✅ Environment variable support
 - ✅ Volume mounting for hot-reload during development
 - ✅ Network isolation
-- ✅ Port mapping (3001:3001)
+- ✅ Host/container port mappings (`9001:3001` for the backend and `9000:5173` for the frontend)
 
 ### Documentation
 
@@ -73,11 +73,11 @@ Successfully implemented the **Optum Enhanced Eligibility Checker** as specified
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        Browser                               │
-│                   http://localhost:5173                      │
+│                   http://localhost:9000                      │
 │                                                               │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │              React Frontend                           │   │
-│  │  • CredentialsForm (optional API creds)              │   │
+│  │  • EnvironmentSelector (sandbox/production)          │   │
 │  │  • EligibilityForm (patient/provider info)           │   │
 │  │  • ResponseDisplay (results)                         │   │
 │  └──────────────────────────────────────────────────────┘   │
@@ -87,7 +87,7 @@ Successfully implemented the **Optum Enhanced Eligibility Checker** as specified
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   Docker Container                           │
-│                 http://localhost:3001                        │
+│                 http://localhost:9001                        │
 │                                                               │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │           Express Backend                             │   │
@@ -106,11 +106,11 @@ Successfully implemented the **Optum Enhanced Eligibility Checker** as specified
 └───────────────────────┬─────────────────────────────────────┘
                         │ OAuth2 + HTTPS
                         │ 1. POST /apip/auth/v2/token (get token)
-                        │ 2. POST /rcm/eligibility/v1 (check)
+                        │ 2. POST /medicalnetwork/eligibility/v3/ (check)
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              Optum Sandbox API                               │
-│        https://sandbox-apigw.optum.com                       │
+│          Optum Sandbox or Production API                     │
+│ sandbox-apigw.optum.com or apigw.optum.com                  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -118,10 +118,10 @@ Successfully implemented the **Optum Enhanced Eligibility Checker** as specified
 
 1. **User fills form** in React frontend
 2. **Frontend sends request** to Express backend with:
-   - Optional credentials (if entered in UI)
+   - Selected environment
    - Eligibility data (patient, provider, payer info)
 3. **Backend receives request**:
-   - Extracts credentials (from request or env vars)
+   - Resolves the matching credentials from `backend/.env`
    - Checks token cache
    - If no valid token, requests new token from Optum OAuth2 endpoint
    - Caches token for ~1 hour
@@ -135,11 +135,11 @@ Successfully implemented the **Optum Enhanced Eligibility Checker** as specified
 ## Key Design Decisions
 
 ### 1. Credentials Management
-**Decision:** Support both UI input and environment variables
+**Decision:** Keep credentials server-side in environment variables
 
 **Rationale:**
-- UI input: Easier for testing without restarting services
-- Environment variables: More secure for production/development
+- Separate variables support sandbox eligibility, production eligibility, and production payer-list access
+- The frontend sends only the selected environment, never credentials
 - Backend handles OAuth2 to keep secrets server-side
 
 ### 2. Token Caching
@@ -151,14 +151,13 @@ Successfully implemented the **Optum Enhanced Eligibility Checker** as specified
 - Handles multiple credential sets (if needed)
 - Simple Map-based cache (could be upgraded to Redis for production)
 
-### 3. Docker for Backend Only
-**Decision:** Dockerize backend but run frontend locally
+### 3. Docker Compose for Both Services
+**Decision:** Run the backend and frontend through Docker Compose
 
 **Rationale:**
-- Backend needs consistent environment
-- Frontend dev server benefits from local hot-reload
-- Simpler debugging for React development
-- Could be fully Dockerized for production
+- Both services start with one command
+- Source volumes retain hot-reload during development
+- Container networking and published ports are configured consistently
 
 ### 4. Basic Form First
 **Decision:** Implement only required/recommended fields initially
@@ -172,30 +171,27 @@ Successfully implemented the **Optum Enhanced Eligibility Checker** as specified
 ## Testing Instructions
 
 ### Prerequisites
-You need Optum API credentials:
-- Client ID
-- Client Secret
-- Access to sandbox environment
+You need the applicable Optum API credentials for sandbox eligibility, production eligibility, and production payer-list access. Configure them in `backend/.env` as described in `QUICK_START.md`.
 
 ### Steps to Test
 
-1. **Start Backend:**
+1. **Configure Credentials:**
    ```bash
-   docker-compose up -d
-   docker-compose logs -f backend  # Verify it's running
+   cp backend/.env.example backend/.env
    ```
+   Add your credentials to `backend/.env` and keep `PORT=3001`.
 
-2. **Start Frontend:**
+2. **Start the Application:**
    ```bash
-   cd frontend
-   npm run dev
+   docker compose up -d --build
+   docker compose ps
    ```
 
 3. **Open Browser:**
-   Navigate to http://localhost:5173
+   Navigate to http://localhost:9000
 
-4. **Enter Credentials:**
-   Click "Enter Manually" and input your Optum credentials
+4. **Select Environment:**
+   Choose Sandbox or Production in the UI. Sandbox is the default.
 
 5. **Fill Form with Test Data:**
    ```
@@ -213,7 +209,7 @@ You need Optum API credentials:
    - Loading state appears
    - Response is displayed
    - Check browser console for any errors
-   - Check backend logs: `docker-compose logs -f backend`
+   - Check backend logs: `docker compose logs -f backend`
 
 ## Known Limitations & Future Enhancements
 
@@ -255,7 +251,7 @@ You need Optum API credentials:
 2. **Frontend:**
    - Build production bundle: `npm run build`
    - Serve via Nginx or CDN
-   - Remove manual credential input (force env vars only)
+   - Keep API credentials out of frontend bundles
    - Add analytics
    - Implement proper error boundaries
 
@@ -271,7 +267,7 @@ You need Optum API credentials:
 ✅ All todos completed
 ✅ Backend successfully dockerized
 ✅ Frontend UI clean and functional
-✅ API credentials configurable (UI or env)
+✅ API credentials configurable through backend environment variables
 ✅ OAuth2 authentication working
 ✅ Token caching implemented
 ✅ All basic required fields included
@@ -292,10 +288,9 @@ Approximately 1 hour of development time covering:
 
 The implementation is complete and ready for testing. All features specified in the plan have been implemented, and the application is fully functional. To use it, you'll need to:
 
-1. Start the backend with Docker Compose
-2. Start the frontend with npm
-3. Provide Optum API credentials
+1. Configure Optum API credentials in `backend/.env`
+2. Start both services with Docker Compose
+3. Select Sandbox or Production in the UI
 4. Test eligibility checks
 
 For any issues or questions, refer to the README.md or QUICK_START.md files.
-

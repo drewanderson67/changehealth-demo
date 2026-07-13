@@ -1,50 +1,42 @@
-# Current Application Status
+# Runtime Configuration
 
-## ✅ Application Running
+This file describes the checked-in runtime configuration. It does not indicate whether a particular local or deployed instance is currently running.
 
-### Backend
-- **Status:** Running in Docker container
-- **Port:** 3001
-- **Environment:** **PRODUCTION** (https://apigw.optum.com)
-- **Container:** changehealth-backend-1
-- **Logs:** `docker-compose logs -f backend`
+## Docker Compose
 
-### Frontend  
-- **Status:** Running via Vite dev server
-- **Port:** 5173
-- **URL:** http://localhost:5173
-- **Process:** Node.js Vite
-- **Logs:** `/tmp/vite.log`
+- Frontend URL: `http://localhost:9000`
+- Backend API: `http://localhost:9001`
+- Backend container port: `3001`
+- Frontend container port: `5173`
+- Backend logs: `docker compose logs -f backend`
+- Frontend logs: `docker compose logs -f frontend`
 
-## Current Configuration
+## Environments and Credentials
 
-### Environment Setup
+Configure credentials in `backend/.env`:
 
-**Production URLs (ACTIVE):**
-- Token endpoint: `https://apigw.optum.com/apip/auth/v2/token`
-- Eligibility endpoint: `https://apigw.optum.com/rcm/eligibility/v1`
+```env
+OPTUM_SANDBOX_CLIENT_ID=your_sandbox_client_id
+OPTUM_SANDBOX_CLIENT_SECRET=your_sandbox_client_secret
+OPTUM_PROD_ELIGIBILITY_CLIENT_ID=your_production_eligibility_client_id
+OPTUM_PROD_ELIGIBILITY_CLIENT_SECRET=your_production_eligibility_client_secret
+OPTUM_PROD_PAYER_CLIENT_ID=your_production_payer_client_id
+OPTUM_PROD_PAYER_CLIENT_SECRET=your_production_payer_client_secret
+PORT=3001
+```
 
-**To switch to Sandbox:**
-Set environment variable `OPTUM_ENV=sandbox` in `.env` file or docker-compose.yml
+The frontend environment selector controls whether eligibility and professional claims requests use the sandbox or production Optum API. It defaults to Sandbox and persists the selection in browser local storage. The backend does not read an `OPTUM_ENV` variable.
 
-### API Credentials
-
-Can be provided via:
-1. **UI Form** - Click "Enter Manually" in the browser
-2. **Environment Variables** - Create `.env` file with:
-   ```env
-   OPTUM_CLIENT_ID=your_production_client_id
-   OPTUM_CLIENT_SECRET=your_production_client_secret
-   OPTUM_ENV=production
-   ```
+Payer lookup, directory, and export requests always use the production payer-list API and the `OPTUM_PROD_PAYER_*` credentials.
 
 ## Testing the Application
 
 ### 1. View in Browser
-Already open at: http://localhost:5173
+Open http://localhost:9000 after starting Docker Compose.
 
-### 2. Enter Credentials
-Click "Enter Manually" and provide your **production** Optum API credentials
+### 2. Select an Environment
+
+Use the environment selector in the UI. Credentials must already be present in `backend/.env`.
 
 ### 3. Fill Form
 - Payer ID: e.g., CIGNA, AETNA, ANTHM
@@ -55,11 +47,11 @@ Click "Enter Manually" and provide your **production** Optum API credentials
 - Optional: Group number, SSN
 
 ### 4. Submit
-Click "Check Eligibility" to get real-time production eligibility data
+Click "Check Eligibility". The request uses the environment selected in the UI.
 
 ## Important Notes
 
-⚠️ **You are now using PRODUCTION endpoints** which:
+⚠️ **Production requests:**
 - Use live/real data (not test data)
 - May incur costs per transaction
 - Require production API credentials (not sandbox credentials)
@@ -70,48 +62,38 @@ Click "Check Eligibility" to get real-time production eligibility data
 - You want real eligibility data
 - You're ready for live testing with real patients
 
-🔄 **To switch back to Sandbox:**
-```bash
-# Option 1: Environment variable in root .env file
-OPTUM_ENV=sandbox
-
-# Then restart backend
-docker-compose restart backend
-```
+To switch environments, use the selector in the UI. No backend restart is required.
 
 ## Monitoring
 
 ### Check Backend Logs
 ```bash
-docker-compose logs -f backend
+docker compose logs -f backend
 ```
 
-### Check Frontend Logs  
+### Check Frontend Logs
 ```bash
-tail -f /tmp/vite.log
+docker compose logs -f frontend
 ```
 
 ### Verify Backend Health
 ```bash
-curl http://localhost:3001/api/eligibility/check-eligibility
+docker compose ps
 ```
 
 ## Quick Commands
 
 **Stop everything:**
 ```bash
-docker-compose down
-pkill -f "node.*vite"
+docker compose down
 ```
 
 **Restart backend:**
 ```bash
-docker-compose restart backend
+docker compose restart backend
 ```
 
 **Restart frontend:**
 ```bash
-pkill -f "node.*vite"
-cd frontend && npm run dev
+docker compose restart frontend
 ```
-

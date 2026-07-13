@@ -2,46 +2,44 @@
 
 ## Getting Started in 5 Minutes
 
-### 1. Start the Backend (Docker)
+### 1. Configure the backend
+
+From the project root, copy the tracked example:
 
 ```bash
-# From the project root
-docker-compose up -d
+cp backend/.env.example backend/.env
 ```
 
-The backend will be running at `http://localhost:3001`
+Add your Optum credentials to `backend/.env`:
 
-### 2. Start the Frontend
+```env
+OPTUM_SANDBOX_CLIENT_ID=your_sandbox_client_id
+OPTUM_SANDBOX_CLIENT_SECRET=your_sandbox_client_secret
+OPTUM_PROD_ELIGIBILITY_CLIENT_ID=your_production_eligibility_client_id
+OPTUM_PROD_ELIGIBILITY_CLIENT_SECRET=your_production_eligibility_client_secret
+OPTUM_PROD_PAYER_CLIENT_ID=your_production_payer_client_id
+OPTUM_PROD_PAYER_CLIENT_SECRET=your_production_payer_client_secret
+PORT=3001
+```
+
+The UI defaults to the sandbox environment. Payer lookup and directory requests always use the production payer endpoint and production payer credentials, regardless of the environment selected in the UI.
+
+### 2. Start the application
+
+Docker Compose starts both the backend and frontend:
 
 ```bash
-cd frontend
-npm run dev
+docker compose up -d --build
 ```
 
-The frontend will be running at `http://localhost:5173`
+- Frontend: **http://localhost:9000**
+- Backend API: **http://localhost:9001**
 
-### 3. Open Your Browser
+### 3. Open your browser
 
-Navigate to: **http://localhost:5173**
+Navigate to **http://localhost:9000**. Choose Sandbox or Production with the environment selector in the UI. Credentials are read by the backend from `backend/.env`; they cannot be entered in the UI.
 
-### 4. Enter API Credentials
-
-You have two options:
-
-**Option A: Use Environment Variables**
-- Create a `.env` file in the project root:
-  ```env
-  OPTUM_CLIENT_ID=your_client_id
-  OPTUM_CLIENT_SECRET=your_client_secret
-  ```
-- Restart the backend: `docker-compose restart backend`
-
-**Option B: Enter Manually in UI**
-- Click "Enter Manually" button
-- Input your Optum Client ID and Client Secret
-- These will be sent securely to the backend
-
-### 5. Fill Out the Form
+### 4. Fill out the form
 
 **Required Fields:**
 - **Payer ID**: e.g., `CIGNA`, `AETNA`, `ANTHM`
@@ -57,7 +55,7 @@ You have two options:
 - Group Number
 - SSN
 
-### 6. Submit
+### 5. Submit
 
 Click "Check Eligibility" and wait for the response!
 
@@ -83,34 +81,28 @@ Group Number: GRP5000
 docker ps
 
 # Check logs
-docker-compose logs -f backend
+docker compose logs -f backend
 ```
 
 **Frontend can't connect?**
 ```bash
-# Verify backend is running
-curl http://localhost:3001/api/eligibility/check-eligibility
+# Verify both containers are running
+docker compose ps
 ```
 
 **Need to rebuild?**
 ```bash
-docker-compose down
-docker-compose up -d --build
+docker compose down
+docker compose up -d --build
 ```
 
 ## Stopping the Application
 
 ```bash
-# Stop backend
-docker-compose down
-
-# Stop frontend
-# Press Ctrl+C in the terminal running the frontend
+docker compose down
 ```
 
 ## Next Steps
 
 - Review the full [README.md](./README.md) for detailed documentation
-- Check the [plan file](./optum-eligibility.plan.md) for implementation details
 - Add more fields as needed for your use case
-
