@@ -51,7 +51,7 @@ Click "Check Eligibility". The request uses the environment selected in the UI.
 
 ## Important Notes
 
-⚠️ **Professional claims are sandbox-only in this prototype:**
+⚠️ **Professional-claim operating policy (not application-enforced): use this prototype only with Optum's canned sandbox workflow.** The environment selector can route claims to production, so operators are responsible for keeping Sandbox selected.
 - The claims backend has no employee authorization layer.
 - Claim and eligibility request payloads may appear in local backend logs.
 - Claim drafts are retained in browser local storage.

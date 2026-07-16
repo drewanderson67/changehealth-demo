@@ -20,7 +20,7 @@ A standalone prototype for eligibility verification and a constrained CMS-1500 p
 - Service line details with CPT/HCPCS codes, modifiers, diagnosis pointers, rendering providers, and CLIA references for QW lab lines
 - Signature on file checkboxes for regulatory compliance
 
-> **Prototype safety boundary:** This repository is a payload and interaction reference, not the production claims system. The backend has no employee authorization layer, claim payloads can be logged in plaintext, and form drafts are retained in browser local storage. Use only Optum canned sandbox data. Do not expose this service publicly, enter real PHI, or use its production submission path. The Novo implementation will add authorization, database-backed immutable attempts, audit history, PHI controls, and validation-before-submission enforcement.
+> **Prototype operating policy (not application-enforced):** This repository is a payload and interaction reference, not the production claims system. Although the environment selector can route professional-claim requests to production, this prototype is approved only for Optum's canned sandbox data. The backend has no employee authorization layer, claim payloads can be logged in plaintext, and form drafts are retained in browser local storage. Operators must not expose this service publicly, enter real PHI, or select its production claim-submission path. The Novo implementation will add authorization, database-backed immutable attempts, audit history, PHI controls, and validation-before-submission enforcement.
 
 ### 🔄 Claims Status (Coming Soon)
 - Real-time claim status tracking
@@ -224,7 +224,7 @@ The claim form follows CMS-1500 box order while intentionally supporting only ne
 
 #### Patient & Insured Information (Boxes 1-11)
 - **Box 1**: Commercial insurance (`CI`) only
-- **Box 1a**: Patient member ID, sent on the subscriber for self coverage or the dependent otherwise
+- **Box 1a**: Insured/subscriber member ID, always sent as `subscriber.memberId` (including when the patient is a dependent)
 - **Boxes 2-5**: Patient demographics and address
 - **Box 6**: Patient relationship to insured (Self, Spouse, Child, Other)
 - **Boxes 4, 7**: Insured's name and address (auto-fills if relationship is "Self")
@@ -301,7 +301,7 @@ Add up to 50 service lines with:
 ### Actions
 
 1. **Validate Claim** - Check claim data against API requirements without submitting
-2. **Submit Claim** - Exercise the selected Optum submission endpoint; this prototype is approved only for the canned sandbox workflow
+2. **Submit Claim** - Exercise the selected Optum submission endpoint; operating policy permits only the canned sandbox workflow, but the prototype does not enforce that restriction in code
 3. **Generate PDF** - Create downloadable CMS 1500 PDF with form data
 
 ### Sandbox Test Data

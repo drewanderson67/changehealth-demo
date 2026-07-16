@@ -159,6 +159,9 @@ export interface ClaimInformation {
   healthCareCodeInformation: HealthCareInformation[];
   serviceLines: ServiceLine[];
   patientAmountPaid?: string;
+  // These properties remain in the general/legacy OpenAPI model, but the
+  // limited primary-commercial telehealth workflow intentionally excludes
+  // conditional claim data and allowlists them out of every request payload.
   propertyCasualtyClaimNumber?: string;
   relatedCausesCode?: Array<'AA' | 'EM' | 'OA'>;
   autoAccidentStateCode?: string;

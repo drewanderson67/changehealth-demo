@@ -309,6 +309,24 @@ function parseCurrencyToCents(value: string): string {
   return digits;
 }
 
+// Box 24F / SV102 is already the total charge for the service line. Box 24G
+// describes how many units that line represents; multiplying the two would
+// overstate CLM02 and make the claim header disagree with its service lines.
+function sumServiceLineChargeCents(serviceLines: ServiceLine[]): number {
+  return serviceLines.reduce((total, line) => {
+    const storedCents = line.professionalService?.lineItemChargeAmount || '0';
+    const chargeInCents = Number.parseInt(storedCents.replace(/\D/g, '') || '0', 10);
+    return total + (Number.isFinite(chargeInCents) ? chargeInCents : 0);
+  }, 0);
+}
+
+function localServiceDate(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}${month}${day}`;
+}
+
 // Validate federal tax ID (9 digits)
 function validateSSN(value: string): boolean {
   const digits = value.replace(/\D/g, '');
@@ -541,12 +559,13 @@ function normalizeSavedFormData(savedData: Partial<ClaimSubmissionRequest>): Par
     ? savedData.dependent
     : undefined;
   const savedDependent = selfDependent ? undefined : savedData.dependent;
-  // Older drafts stored Box 1a on subscriber even when the patient was a
-  // dependent. This workflow only collects the patient's member ID, so move
-  // that value to the dependent record when necessary.
+  // Older prototype drafts incorrectly moved Box 1a to dependent.memberId.
+  // CMS-1500 Box 1a and Optum both expect the insured/subscriber identifier,
+  // including when the patient is a spouse, child, or other dependent.
+  const subscriberMemberId = savedSubscriber?.memberId || savedDependent?.memberId;
   const dependent = savedDependent ? {
     ...savedDependent,
-    memberId: savedDependent.memberId || savedSubscriber?.memberId
+    memberId: undefined
   } : undefined;
   const savedPatientControlNumber = savedClaimInformation?.patientControlNumber?.trim() || '';
   const isSavedOptumSandboxFixture = isOptumSandboxFixtureData(savedData);
@@ -566,7 +585,7 @@ function normalizeSavedFormData(savedData: Partial<ClaimSubmissionRequest>): Par
         address: selfDependent.address || savedSubscriber?.address,
         contactInformation: selfDependent.contactInformation || savedSubscriber?.contactInformation
       } : {}),
-      memberId: dependent ? undefined : (selfDependent?.memberId || savedSubscriber?.memberId),
+      memberId: subscriberMemberId || selfDependent?.memberId,
       paymentResponsibilityLevelCode: 'P'
     },
     dependent,
@@ -615,6 +634,8 @@ function normalizeSavedFormData(savedData: Partial<ClaimSubmissionRequest>): Par
       benefitsAssignmentCertificationIndicator: savedClaimInformation?.benefitsAssignmentCertificationIndicator || 'Y',
       releaseInformationCode: savedClaimInformation?.releaseInformationCode || 'Y',
       propertyCasualtyClaimNumber: undefined,
+      relatedCausesCode: undefined,
+      autoAccidentStateCode: undefined,
       claimDateInformation: undefined,
       claimNote: undefined,
       claimSupplementalInformation: undefined,
@@ -628,7 +649,7 @@ function normalizeSavedFormData(savedData: Partial<ClaimSubmissionRequest>): Par
       } : undefined,
       healthCareCodeInformation: DEFAULT_DIAGNOSES.map((diagnosis, index) => ({
         ...diagnosis,
-        diagnosisCode: savedClaimInformation?.healthCareCodeInformation?.[index]?.diagnosisCode || diagnosis.diagnosisCode
+        diagnosisCode: savedClaimInformation?.healthCareCodeInformation?.[index]?.diagnosisCode ?? diagnosis.diagnosisCode
       })).concat((savedClaimInformation?.healthCareCodeInformation || []).slice(DEFAULT_DIAGNOSES.length)),
       serviceLines: savedClaimInformation?.serviceLines?.length
         ? savedClaimInformation.serviceLines.map((line) => ({
@@ -677,7 +698,9 @@ interface BuildClaimOptions {
   physicianSignatureDate: string;
 }
 
-function buildPrimaryClaimRequest(
+// Exported so payload invariants can be tested without driving the full form.
+// eslint-disable-next-line react-refresh/only-export-components
+export function buildPrimaryClaimRequest(
   formData: Partial<ClaimSubmissionRequest>,
   options: BuildClaimOptions
 ): ClaimSubmissionRequest {
@@ -704,9 +727,9 @@ function buildPrimaryClaimRequest(
 
   const subscriberSource = formData.subscriber;
   const dependentSource = formData.dependent;
-  const patientMemberId = (dependentSource?.memberId || subscriberSource?.memberId || '').trim();
+  const subscriberMemberId = (subscriberSource?.memberId || dependentSource?.memberId || '').trim();
   const subscriberName = [subscriberSource?.firstName, subscriberSource?.lastName].filter(Boolean).join(' ').trim();
-  requireValue(patientMemberId, "Box 1a - Patient's member ID");
+  requireValue(subscriberMemberId, "Box 1a - Insured's member ID");
   requireValue(subscriberSource?.firstName, "Box 4 - Insured's first name");
   requireValue(subscriberSource?.lastName, "Box 4 - Insured's last name");
   requireValue(subscriberSource?.dateOfBirth, "Box 11a - Insured's date of birth");
@@ -720,7 +743,7 @@ function buildPrimaryClaimRequest(
     ...subscriberSource,
     paymentResponsibilityLevelCode: 'P',
     subscriberGroupName: undefined,
-    memberId: dependentSource ? undefined : patientMemberId,
+    memberId: subscriberMemberId,
     firstName: subscriberSource?.firstName?.trim(),
     lastName: subscriberSource?.lastName?.trim(),
     dateOfBirth: formatDateForAPI(subscriberSource?.dateOfBirth || ''),
@@ -746,7 +769,9 @@ function buildPrimaryClaimRequest(
     const dependentName = [dependentSource.firstName, dependentSource.lastName].filter(Boolean).join(' ').trim();
     dependent = {
       ...dependentSource,
-      memberId: patientMemberId,
+      // Box 1a belongs to the subscriber. A dependent may be the patient, but
+      // this constrained workflow must not serialize that ID on the dependent.
+      memberId: undefined,
       firstName: dependentSource.firstName?.trim() || '',
       lastName: dependentSource.lastName?.trim() || '',
       dateOfBirth: formatDateForAPI(dependentSource.dateOfBirth),
@@ -861,7 +886,8 @@ function buildPrimaryClaimRequest(
   const serviceLines = (formData.claimInformation?.serviceLines || []).map((line, index) => {
     const lineNumber = index + 1;
     requireValue(line.serviceDate, `Box 24A - Service line ${lineNumber} date`);
-    requireValue(line.professionalService?.placeOfServiceCode || formData.claimInformation?.placeOfServiceCode, `Box 24B - Service line ${lineNumber} place of service`);
+    // Box 24B is an invariant in this limited telehealth workflow. The request
+    // below always emits place-of-service 10 rather than accepting draft data.
     requireValue(line.professionalService?.procedureCode, `Box 24D - Service line ${lineNumber} procedure code`);
     requireValue(line.professionalService?.lineItemChargeAmount, `Box 24F - Service line ${lineNumber} charge`);
     requireValue(line.professionalService?.serviceUnitCount, `Box 24G - Service line ${lineNumber} units`);
@@ -893,7 +919,9 @@ function buildPrimaryClaimRequest(
     }
     if (hasProviderIdentity(line.renderingProvider)) {
       const renderingSource = line.renderingProvider!;
-      requireValue(renderingSource.npi, `Box 24J - Service line ${lineNumber} rendering NPI`);
+      if (isOptumSandbox) {
+        requireValue(renderingSource.npi, `Box 24J - Service line ${lineNumber} rendering NPI`);
+      }
       requireValue(providerDisplayName(renderingSource), `Box 24J - Service line ${lineNumber} rendering provider name`);
       requireDigits(renderingSource.npi, 10, `Box 24J - Service line ${lineNumber} rendering NPI`);
       renderingProvider = {
@@ -993,12 +1021,7 @@ function buildPrimaryClaimRequest(
     throw new Error(`Please complete the required claim fields:\n- ${errors.join('\n- ')}`);
   }
 
-  const totalChargeCents = (formData.claimInformation?.serviceLines || []).reduce((total, line) => {
-    const rawAmount = line.professionalService?.lineItemChargeAmount || '0';
-    const unitCount = Number.parseFloat(line.professionalService?.serviceUnitCount || '1');
-    const chargeInCents = Number.parseInt(rawAmount.replace(/\D/g, '') || '0', 10);
-    return total + Math.round(chargeInCents * (Number.isFinite(unitCount) ? unitCount : 1));
-  }, 0);
+  const totalChargeCents = sumServiceLineChargeCents(formData.claimInformation?.serviceLines || []);
 
   return {
     controlNumber: normalizeControlNumber(formData.controlNumber),
@@ -1164,14 +1187,24 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
   };
 
   // A response and clearinghouse tracking number describe one immutable
-  // request. Any draft edit or environment change invalidates that display.
+  // request. Draft edits invalidate a completed result. While a request is in
+  // flight, the root fieldset is disabled: an already-sent POST cannot be
+  // cancelled safely, and allowing edits/re-submission could hide an accepted
+  // claim or create a duplicate.
   useEffect(() => {
     setResponse(null);
     setError(null);
     setLastRequest(null);
     setActionType(null);
     setOptumTrackingNumber('');
-  }, [formData, environment]);
+  }, [
+    formData,
+    environment,
+    submitAsTest,
+    patientSignatureOnFile,
+    authorizedSignatureOnFile,
+    physicianSignatureDate
+  ]);
 
   // Never carry Optum's canned pseudo-patient/provider fixture into the
   // production endpoint. Other manually entered drafts remain intact when the
@@ -1183,32 +1216,6 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
       ));
     }
   }, [environment]);
-
-  // Auto-calculate Box 28 (Total Charge) from sum of all Box 24f (service line charges)
-  useEffect(() => {
-    const serviceLines = formData.claimInformation?.serviceLines || [];
-    let totalCents = 0;
-    
-    serviceLines.forEach(line => {
-      const chargeAmount = line.professionalService?.lineItemChargeAmount;
-      if (chargeAmount && chargeAmount !== '') {
-        // Charge amounts are stored as strings of digits (cents)
-        const cents = parseInt(chargeAmount, 10);
-        if (!isNaN(cents)) {
-          const unitCount = Number.parseFloat(line.professionalService?.serviceUnitCount || '1');
-          totalCents += Math.round(cents * (Number.isFinite(unitCount) ? unitCount : 1));
-        }
-      }
-    });
-    
-    // Update Box 28 with the calculated total (only if different to avoid infinite loop)
-    const totalAsString = totalCents.toString();
-    const currentTotal = formData.claimInformation?.claimChargeAmount || '0';
-    if (currentTotal !== totalAsString) {
-      updateField(['claimInformation', 'claimChargeAmount'], totalAsString);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.claimInformation?.serviceLines]);
 
   const updateField = (path: string[], value: unknown) => {
     setFormData(prev => {
@@ -1235,6 +1242,31 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
     });
   };
 
+  const updateServiceLines = (updater: (current: ServiceLine[]) => ServiceLine[]) => {
+    setFormData((previous) => {
+      const current = previous.claimInformation?.serviceLines || [];
+      const next = updater(current);
+      if (next === current) return previous;
+
+      return {
+        ...previous,
+        claimInformation: {
+          ...previous.claimInformation,
+          serviceLines: next
+        } as ClaimSubmissionRequest['claimInformation']
+      };
+    });
+  };
+
+  const updateServiceLineAt = (index: number, updater: (line: ServiceLine) => ServiceLine) => {
+    updateServiceLines((current) => {
+      if (!current[index]) return current;
+      const next = [...current];
+      next[index] = updater(current[index]);
+      return next;
+    });
+  };
+
   const setPatientRelationship = (relationship: '18' | Dependent['relationshipToSubscriberCode']) => {
     setFormData((prev) => {
       if (relationship === '18') {
@@ -1248,7 +1280,6 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               lastName: patient.lastName,
               middleName: patient.middleName,
               suffix: patient.suffix,
-              memberId: patient.memberId,
               gender: patient.gender,
               dateOfBirth: patient.dateOfBirth,
               address: patient.address,
@@ -1267,6 +1298,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
         ...prev,
         subscriber: {
           ...(changingFromSelf ? {
+            memberId: prev.subscriber?.memberId,
             policyNumber: prev.subscriber?.policyNumber,
             groupNumber: prev.subscriber?.groupNumber,
             subscriberGroupName: prev.subscriber?.subscriberGroupName
@@ -1278,7 +1310,6 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
           lastName: currentPatient?.lastName || '',
           middleName: currentPatient?.middleName,
           suffix: currentPatient?.suffix,
-          memberId: currentPatient?.memberId,
           gender: currentPatient?.gender || 'U',
           dateOfBirth: currentPatient?.dateOfBirth || '',
           relationshipToSubscriberCode: relationship,
@@ -1295,57 +1326,47 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
   };
 
   const addServiceLine = () => {
-    const currentLines = formData.claimInformation?.serviceLines || [];
-    if (currentLines.length >= MAX_SERVICE_LINES) return;
-    
-    const newLine = createEmptyServiceLine();
-    // Box 24A is shared by every service in this limited workflow. Preserve
-    // the claim's existing service date and leave only non-default values—such
-    // as procedure, diagnosis pointer, charge, and rendering provider—blank.
-    newLine.serviceDate = currentLines[0]?.serviceDate || '';
-    
-    updateField(['claimInformation', 'serviceLines'], [...currentLines, newLine]);
+    updateServiceLines((currentLines) => {
+      if (currentLines.length >= MAX_SERVICE_LINES) return currentLines;
+
+      const newLine = createEmptyServiceLine();
+      // Box 24A is shared by every service in this limited workflow. Preserve
+      // the claim's existing service date and leave only non-default values—such
+      // as procedure, diagnosis pointer, charge, and rendering provider—blank.
+      newLine.serviceDate = currentLines[0]?.serviceDate || '';
+      return [...currentLines, newLine];
+    });
   };
 
   const updateAllServiceDates = (serviceDate: string) => {
-    const serviceLines = (formData.claimInformation?.serviceLines || []).map((line) => ({
+    updateServiceLines((current) => current.map((line) => ({
       ...line,
       serviceDate,
       serviceDateEnd: undefined
-    }));
-    updateField(['claimInformation', 'serviceLines'], serviceLines);
+    })));
   };
 
   const updateServiceLine = (index: number, field: string, value: string) => {
-    const serviceLines = [...(formData.claimInformation?.serviceLines || [])];
-    if (!serviceLines[index]) return;
-    
-    if (field.includes('.')) {
-      const [mainField, subField] = field.split('.');
-      serviceLines[index] = {
-        ...serviceLines[index],
-        [mainField]: {
-          ...(serviceLines[index] as unknown as Record<string, Record<string, unknown>>)[mainField],
-          [subField]: value
-        }
-      } as ServiceLine;
-    } else {
-      serviceLines[index] = {
-        ...serviceLines[index],
-        [field]: value
-      } as ServiceLine;
-    }
-    updateField(['claimInformation', 'serviceLines'], serviceLines);
+    updateServiceLineAt(index, (line) => {
+      if (field.includes('.')) {
+        const [mainField, subField] = field.split('.');
+        return {
+          ...line,
+          [mainField]: {
+            ...(line as unknown as Record<string, Record<string, unknown>>)[mainField],
+            [subField]: value
+          }
+        } as ServiceLine;
+      }
+
+      return { ...line, [field]: value } as ServiceLine;
+    });
   };
 
   const updateServiceLineProcedure = (index: number, procedureCode: string) => {
-    const serviceLines = [...(formData.claimInformation?.serviceLines || [])];
-    const line = serviceLines[index];
-    if (!line) return;
-
     const procedure = PROCEDURE_OPTIONS.find((option) => option.code === procedureCode);
     const requiresClia = procedure?.modifiers.includes('QW') || false;
-    serviceLines[index] = {
+    updateServiceLineAt(index, (line) => ({
       ...line,
       professionalService: {
         ...line.professionalService,
@@ -1359,28 +1380,36 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               || REPERIO_DEFAULT_CLIA_NUMBER
           }
         : undefined
-    };
-    updateField(['claimInformation', 'serviceLines'], serviceLines);
+    }));
   };
 
   const updateDiagnosis = (index: number, value: string) => {
-    const diagnoses = [...(formData.claimInformation?.healthCareCodeInformation || [])];
-    if (!diagnoses[index]) {
-      diagnoses[index] = { diagnosisTypeCode: 'ABK', diagnosisCode: value };
-    } else {
-      diagnoses[index].diagnosisCode = value;
-    }
-    updateField(['claimInformation', 'healthCareCodeInformation'], diagnoses);
+    setFormData((previous) => {
+      const diagnoses = [...(previous.claimInformation?.healthCareCodeInformation || [])];
+      diagnoses[index] = {
+        ...diagnoses[index],
+        diagnosisTypeCode: index === 0 ? 'ABK' : 'ABF',
+        diagnosisCode: value
+      };
+      return {
+        ...previous,
+        claimInformation: {
+          ...previous.claimInformation,
+          healthCareCodeInformation: diagnoses
+        } as ClaimSubmissionRequest['claimInformation']
+      };
+    });
   };
 
   const handleValidate = async () => {
+    let claimRequest: ClaimSubmissionRequest | null = null;
     setLoading(true);
     setError(null);
     setResponse(null);
     setActionType('validate');
 
     try {
-      const claimRequest = buildPrimaryClaimRequest(formData, {
+      claimRequest = buildPrimaryClaimRequest(formData, {
         environment,
         submitAsTest,
         patientSignatureOnFile,
@@ -1389,8 +1418,14 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
       });
       setLastRequest(claimRequest);
       const result = await validateClaim(claimRequest, environment);
+      // Re-publish the captured request after the await so the response panel
+      // always receives the exact immutable request/response pair.
+      setLastRequest(claimRequest);
+      setActionType('validate');
       setResponse(result);
     } catch (err) {
+      if (claimRequest) setLastRequest(claimRequest);
+      setActionType('validate');
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
@@ -1398,6 +1433,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
   };
 
   const handleSubmit = async () => {
+    let claimRequest: ClaimSubmissionRequest | null = null;
     setLoading(true);
     setError(null);
     setResponse(null);
@@ -1405,7 +1441,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
     setActionType('submit');
 
     try {
-      const claimRequest = buildPrimaryClaimRequest(formData, {
+      claimRequest = buildPrimaryClaimRequest(formData, {
         environment,
         submitAsTest,
         patientSignatureOnFile,
@@ -1414,6 +1450,8 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
       });
       setLastRequest(claimRequest);
       const result = await submitClaim(claimRequest, environment);
+      setLastRequest(claimRequest);
+      setActionType('submit');
       setResponse(result);
       setOptumTrackingNumber(
         result.claimReference?.rhclaimNumber
@@ -1421,6 +1459,8 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
         || ''
       );
     } catch (err) {
+      if (claimRequest) setLastRequest(claimRequest);
+      setActionType('submit');
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
@@ -1455,8 +1495,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
   const diagnoses = formData.claimInformation?.healthCareCodeInformation || [];
   
   const removeServiceLine = (index: number) => {
-    const updated = effectiveServiceLines.filter((_, i) => i !== index);
-    updateField(['claimInformation', 'serviceLines'], updated);
+    updateServiceLines((current) => current.filter((_, currentIndex) => currentIndex !== index));
   };
 
   const clearForm = () => {
@@ -1474,7 +1513,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
     const defaultProvider = PROVIDER_OPTIONS[0];
     const defaultPayerId = '87726';
     const defaultPayerName = 'UnitedHealthcare';
-    const serviceDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const serviceDate = localServiceDate();
     const patientAddress = {
       address1: '123 Main St',
       city: 'Portland',
@@ -1606,7 +1645,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
     : (formData.claimInformation?.serviceFacilityLocation?.npi || '');
 
   return (
-    <div className="w-full">
+    <fieldset disabled={loading} className="w-full min-w-0 border-0 p-0 m-0">
       {/* Environment Selector */}
       {onEnvironmentChange && (
         <div className="mb-4">
@@ -1789,13 +1828,13 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
             <label className={`text-sm font-bold mb-2 block ${REQUIRED_LABEL_CLASS}`}>1a. INSURED'S I.D. NUMBER</label>
             <input
               type="text"
-              value={patient?.memberId || ''}
-              onChange={(e) => updateField([patientFieldRoot, 'memberId'], e.target.value)}
+              value={formData.subscriber?.memberId || ''}
+              onChange={(e) => updateField(['subscriber', 'memberId'], e.target.value)}
               maxLength={29}
               className={`w-full p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
             />
             <p className="mt-1 text-xs text-gray-500">
-              Patient member ID; submitted as {patientIsSubscriber ? 'subscriber.memberId' : 'dependent.memberId'}.
+              Insured/subscriber member ID; always submitted as <code>subscriber.memberId</code>, including when the patient is a dependent.
             </p>
           </div>
 
@@ -2598,15 +2637,13 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                             .map((value) => value.replace(/[^A-Z0-9]/g, '').slice(0, 2))
                             .filter(Boolean)
                             .slice(0, 4);
-                          const sl = [...effectiveServiceLines];
-                          sl[index] = {
-                            ...sl[index],
+                          updateServiceLineAt(index, (currentLine) => ({
+                            ...currentLine,
                             professionalService: {
-                              ...sl[index].professionalService,
+                              ...currentLine.professionalService,
                               procedureModifiers: modifiers.length > 0 ? modifiers : undefined
                             }
-                          };
-                          updateField(['claimInformation', 'serviceLines'], sl);
+                          }));
                         }}
                         placeholder="95 GT"
                         maxLength={11}
@@ -2638,17 +2675,15 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                             .replace(/[^A-L]/g, '')
                             .slice(0, 4)
                             .split('');
-                          const sl = [...effectiveServiceLines];
-                          sl[index] = {
-                            ...sl[index],
+                          updateServiceLineAt(index, (currentLine) => ({
+                            ...currentLine,
                             professionalService: {
-                              ...sl[index].professionalService,
+                              ...currentLine.professionalService,
                               compositeDiagnosisCodePointers: {
                                 diagnosisCodePointers: pointers
                               }
                             }
-                          };
-                          updateField(['claimInformation', 'serviceLines'], sl);
+                          }));
                         }}
                         placeholder="A"
                         maxLength={4}
@@ -2733,15 +2768,13 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         value={line.professionalService?.epsdtIndicator || ''}
                         onChange={(e) => {
                           const value = e.target.value.toUpperCase().replace(/[^Y]/g, '').slice(0, 1);
-                          const sl = [...effectiveServiceLines];
-                          sl[index] = {
-                            ...sl[index],
+                          updateServiceLineAt(index, (currentLine) => ({
+                            ...currentLine,
                             professionalService: {
-                              ...sl[index].professionalService,
+                              ...currentLine.professionalService,
                               epsdtIndicator: value === 'Y' ? 'Y' : undefined
                             }
-                          };
-                          updateField(['claimInformation', 'serviceLines'], sl);
+                          }));
                         }}
                         maxLength={1}
                         placeholder="N"
@@ -2766,15 +2799,13 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         value={line.professionalService?.familyPlanningIndicator || ''}
                         onChange={(e) => {
                           const value = e.target.value.toUpperCase().replace(/[^Y]/g, '').slice(0, 1);
-                          const sl = [...effectiveServiceLines];
-                          sl[index] = {
-                            ...sl[index],
+                          updateServiceLineAt(index, (currentLine) => ({
+                            ...currentLine,
                             professionalService: {
-                              ...sl[index].professionalService,
+                              ...currentLine.professionalService,
                               familyPlanningIndicator: value === 'Y' ? 'Y' : undefined
                             }
-                          };
-                          updateField(['claimInformation', 'serviceLines'], sl);
+                          }));
                         }}
                         maxLength={1}
                         placeholder="N"
@@ -2822,16 +2853,14 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         value={line.renderingProvider?.npi || ''}
                         onChange={(e) => {
                           const value = e.target.value.replace(/\D/g, '').slice(0, 10);
-                          const sl = [...effectiveServiceLines];
-                          sl[index] = {
-                            ...sl[index],
+                          updateServiceLineAt(index, (currentLine) => ({
+                            ...currentLine,
                             renderingProvider: {
-                              ...sl[index].renderingProvider,
+                              ...currentLine.renderingProvider,
                               providerType: 'RenderingProvider',
                               npi: value
                             }
-                          };
-                          updateField(['claimInformation', 'serviceLines'], sl);
+                          }));
                         }}
                         placeholder="NPI (10 digits)"
                         maxLength={10}
@@ -2844,16 +2873,14 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                       type="text"
                       value={line.renderingProvider?.firstName || ''}
                       onChange={(e) => {
-                        const sl = [...effectiveServiceLines];
-                        sl[index] = {
-                          ...sl[index],
+                        updateServiceLineAt(index, (currentLine) => ({
+                          ...currentLine,
                           renderingProvider: {
-                            ...sl[index].renderingProvider,
+                            ...currentLine.renderingProvider,
                             providerType: 'RenderingProvider',
                             firstName: e.target.value
                           }
-                        };
-                        updateField(['claimInformation', 'serviceLines'], sl);
+                        }));
                       }}
                       placeholder="Rendering provider first name"
                       className={`p-1.5 border rounded text-sm ${renderingProviderFirstNameIsRequired ? REQUIRED_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
@@ -2862,16 +2889,14 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                       type="text"
                       value={line.renderingProvider?.lastName || ''}
                       onChange={(e) => {
-                        const sl = [...effectiveServiceLines];
-                        sl[index] = {
-                          ...sl[index],
+                        updateServiceLineAt(index, (currentLine) => ({
+                          ...currentLine,
                           renderingProvider: {
-                            ...sl[index].renderingProvider,
+                            ...currentLine.renderingProvider,
                             providerType: 'RenderingProvider',
                             lastName: e.target.value
                           }
-                        };
-                        updateField(['claimInformation', 'serviceLines'], sl);
+                        }));
                       }}
                       placeholder="Rendering provider last name"
                       className={`p-1.5 border rounded text-sm ${renderingProviderLastNameIsRequired ? REQUIRED_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
@@ -2880,16 +2905,14 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                       type="text"
                       value={line.renderingProvider?.taxonomyCode || ''}
                       onChange={(e) => {
-                        const sl = [...effectiveServiceLines];
-                        sl[index] = {
-                          ...sl[index],
+                        updateServiceLineAt(index, (currentLine) => ({
+                          ...currentLine,
                           renderingProvider: {
-                            ...sl[index].renderingProvider,
+                            ...currentLine.renderingProvider,
                             providerType: 'RenderingProvider',
                             taxonomyCode: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10)
                           }
-                        };
-                        updateField(['claimInformation', 'serviceLines'], sl);
+                        }));
                       }}
                       placeholder="Rendering taxonomy"
                       maxLength={10}
@@ -2908,14 +2931,12 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                           : (line.serviceLineReferenceInformation?.clinicalLaboratoryImprovementAmendmentNumber || '')}
                         onChange={(e) => {
                           const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
-                          const sl = [...effectiveServiceLines];
-                          sl[index] = {
-                            ...sl[index],
+                          updateServiceLineAt(index, (currentLine) => ({
+                            ...currentLine,
                             serviceLineReferenceInformation: value
                               ? { clinicalLaboratoryImprovementAmendmentNumber: value }
                               : undefined
-                          };
-                          updateField(['claimInformation', 'serviceLines'], sl);
+                          }));
                         }}
                         disabled={isOptumSandbox}
                         placeholder={isOptumSandbox ? 'Omitted for Optum canned sandbox fixture' : REPERIO_DEFAULT_CLIA_NUMBER}
@@ -3061,7 +3082,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               <span className="text-sm">$</span>
               <input
                 type="text"
-                value={formData.claimInformation?.claimChargeAmount ? formatCurrency(formData.claimInformation.claimChargeAmount) : '0.00'}
+                value={formatCurrency(String(sumServiceLineChargeCents(effectiveServiceLines))) || '0.00'}
                 readOnly
                 placeholder="0.00"
                 className={`w-full p-2 border rounded bg-gray-50 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
@@ -3344,6 +3365,6 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
         </div>
       )}
 
-    </div>
+    </fieldset>
   );
 }
