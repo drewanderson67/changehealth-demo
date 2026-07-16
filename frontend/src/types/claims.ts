@@ -101,10 +101,15 @@ export interface ProfessionalService {
   };
 }
 
+export interface ServiceLineReferenceInformation {
+  clinicalLaboratoryImprovementAmendmentNumber?: string;
+}
+
 export interface ServiceLine {
   serviceDate: string;
   serviceDateEnd?: string;
   professionalService: ProfessionalService;
+  serviceLineReferenceInformation?: ServiceLineReferenceInformation;
   renderingProvider?: Provider;
 }
 
@@ -211,6 +216,7 @@ export interface ClaimResponse {
     claimType?: string;
     payerID?: string;
     formatVersion?: string;
+    rhClaimNumber?: string;
     rhclaimNumber?: string;
   };
   errors?: Array<{

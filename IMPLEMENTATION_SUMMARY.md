@@ -1,5 +1,7 @@
 # Implementation Summary
 
+> Historical note: this document summarizes the original eligibility prototype. It is not a production-readiness statement for the professional-claims workflow. Current claim behavior and safety boundaries are documented in `README.md`.
+
 ## ✅ Completed Implementation
 
 Successfully implemented the **Optum Enhanced Eligibility Checker** as specified in the plan.

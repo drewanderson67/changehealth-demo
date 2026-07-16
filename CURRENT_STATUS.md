@@ -51,16 +51,14 @@ Click "Check Eligibility". The request uses the environment selected in the UI.
 
 ## Important Notes
 
-⚠️ **Production requests:**
-- Use live/real data (not test data)
-- May incur costs per transaction
-- Require production API credentials (not sandbox credentials)
-- Connect to actual payer systems
+⚠️ **Professional claims are sandbox-only in this prototype:**
+- The claims backend has no employee authorization layer.
+- Claim and eligibility request payloads may appear in local backend logs.
+- Claim drafts are retained in browser local storage.
+- Do not enter real claim PHI, expose the service publicly, or use the production claim-submission path.
+- Use Optum's canned fixture via **Load Optum Sandbox Data** for claim verification.
 
-✅ **Production is appropriate when:**
-- You have production API credentials
-- You want real eligibility data
-- You're ready for live testing with real patients
+Production eligibility behavior predates the claims prototype and is outside the claim-form reference scope. Any live eligibility use still requires approved production credentials, an appropriately controlled deployment, and the team's normal PHI safeguards.
 
 To switch environments, use the selector in the UI. No backend restart is required.
 

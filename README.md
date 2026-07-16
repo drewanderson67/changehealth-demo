@@ -1,6 +1,6 @@
 # ChangeHealth - Professional Claims & Eligibility Platform
 
-A full-stack healthcare claims management application with integrated eligibility verification, CMS 1500 claim form submission, and real-time claims processing using the Optum Medical Network APIs.
+A standalone prototype for eligibility verification and a constrained CMS-1500 professional-claim workflow using the Optum Medical Network APIs.
 
 ## 🏥 Features
 
@@ -12,13 +12,15 @@ A full-stack healthcare claims management application with integrated eligibilit
 - OAuth2 authentication with automatic token caching
 
 ### 📋 Professional Claims (CMS 1500)
-- Complete CMS 1500 claim form implementation
+- CMS-1500-aligned primary commercial claim form
 - Support for up to 50 service lines per claim
 - Automatic total charge calculation
 - Claim validation and submission to Optum API
 - Multiple diagnosis codes (up to 12 ICD-10 codes)
-- Service line details with CPT/HCPCS codes, modifiers, and diagnosis pointers
+- Service line details with CPT/HCPCS codes, modifiers, diagnosis pointers, rendering providers, and CLIA references for QW lab lines
 - Signature on file checkboxes for regulatory compliance
+
+> **Prototype safety boundary:** This repository is a payload and interaction reference, not the production claims system. The backend has no employee authorization layer, claim payloads can be logged in plaintext, and form drafts are retained in browser local storage. Use only Optum canned sandbox data. Do not expose this service publicly, enter real PHI, or use its production submission path. The Novo implementation will add authorization, database-backed immutable attempts, audit history, PHI controls, and validation-before-submission enforcement.
 
 ### 🔄 Claims Status (Coming Soon)
 - Real-time claim status tracking
@@ -218,16 +220,16 @@ Open your browser to **http://localhost:9000** and:
 
 ### Form Organization
 
-The claim form follows the CMS 1500 Professional Claim format with these key sections:
+The claim form follows CMS-1500 box order while intentionally supporting only new, primary commercial telehealth claims:
 
 #### Patient & Insured Information (Boxes 1-11)
-- **Box 1**: Insurance type (Medicare, Medicaid, TRICARE, etc.)
-- **Box 1a**: Insured's ID Number
+- **Box 1**: Commercial insurance (`CI`) only
+- **Box 1a**: Patient member ID, sent on the subscriber for self coverage or the dependent otherwise
 - **Boxes 2-5**: Patient demographics and address
-- **Box 6**: Patient relationship to insured (Self, Spouse, Child)
+- **Box 6**: Patient relationship to insured (Self, Spouse, Child, Other)
 - **Boxes 4, 7**: Insured's name and address (auto-fills if relationship is "Self")
-- **Boxes 9-9d**: Other insurance information (for secondary payers)
-- **Boxes 11-11d**: Primary insurance policy details
+- **Boxes 9-9d**: Visible but disabled because secondary coverage is unsupported
+- **Boxes 11-11d**: Primary subscriber details; 11b/11c are not applicable and 11d is always No
 
 #### Signatures & Dates (Boxes 12-13)
 - **Box 12**: Patient signature on file (checkbox)
@@ -235,66 +237,63 @@ The claim form follows the CMS 1500 Professional Claim format with these key sec
 - Both pre-checked by default
 
 #### Condition & Treatment Information (Boxes 14-23)
-- **Box 14**: Date of current illness/injury
-- **Box 15-18**: Related dates (disability, hospitalization)
-- **Box 10**: Employment/accident relation
-- **Box 17-17b**: Referring provider information
-- **Box 19**: Additional claim information
-- **Box 20**: Outside lab charges
-- **Box 21**: Diagnosis codes (ICD-10) - Up to 12 codes (A-L)
-- **Box 22**: Resubmission code (Original/Replacement/Void)
-- **Box 23**: Prior authorization number
+- **Boxes 10, 14-19**: Visible but disabled; conditional, accident, hospitalization, and referral workflows are unsupported
+- **Box 20**: Always No
+- **Box 21**: Up to 12 editable ICD-10 diagnoses (A-L), with the first five workflow defaults pre-populated
+- **Box 22**: Always `1` (new claim)
+- **Box 23**: Visible but disabled; prior authorization is unsupported
 
 #### Service Lines (Box 24)
 Add up to 50 service lines with:
-- **24A**: From/To dates (date picker)
-- **24B**: Place of service code (default: 10)
-- **24C**: EMG - Emergency indicator (checkbox)
+- **24A**: One shared date of service; changing any line updates every line
+- **24B**: Place of service `10` (telehealth in the patient's home)
+- **24C**: Always non-emergency
 - **24D**: CPT/HCPCS procedure code + modifier (dropdown)
-- **24E**: Diagnosis pointer (dropdown showing A-L with actual diagnosis codes)
+- **24E**: Editable A-L diagnosis pointers
 - **24F**: Charges (USD, auto-formatted)
 - **24G**: Days/Units
 - **24H**: EPSDT (Early Periodic Screening)
 - **24I**: ID Qualifier (NPI - preselected)
-- **24J**: Rendering provider NPI
+- **24J**: Rendering provider NPI and name, required outside Optum's canned sandbox fixture
+- **QW lab lines**: CLIA X4 service-line reference, defaulted to the prototype certificate number outside sandbox
 
 #### Charge Summary (Boxes 25-29)
-- **Box 25**: Federal Tax ID (EIN with dropdown selection)
-- **Box 26**: Patient account number
-- **Box 27**: Accept assignment (YES/NO)
+- **Box 25**: Federal Tax ID (EIN only)
+- **Box 26**: Provider-assigned patient control number (`RC-` plus 12 digits outside sandbox)
+- **Box 27**: Assignment accepted
 - **Box 28**: **Total charge** (auto-calculated from service lines) - READ-ONLY
-- **Box 29**: Amount paid by patient
+- **Box 29**: Amount paid by patient, fixed at `$0.00`
 
 #### Provider Information (Boxes 31-33)
-- **Box 31**: Physician signature on file (checkbox)
-- **Box 32**: Service facility location and NPI
-- **Box 33**: Billing provider name, address, phone, and NPI
+- **Box 31**: Physician signature on file plus a required signature date retained by the prototype
+- **Box 32**: Required service facility organization, address, and NPI
+- **Box 33**: Mirrors the Box 32 organization/NPI, uses the fixed Reperio billing address, and exposes read-only Claims Support contact metadata; the CMS telephone field is not applicable
 
 ### Form Features
 
 ✅ **Auto-population**:
-- Box 1: "Other" pre-selected
+- Box 1: Commercial insurance (`CI`)
 - Box 12, 13, 31: "Signature on file" pre-checked
-- Box 20: "No" (outside lab) pre-checked
-- Box 24B: Place of service "10" for all lines
-- Box 25: EIN pre-checked with dropdown
+- Box 20: "No" (outside lab)
+- Box 21: Five default diagnoses
+- Box 22: New claim
+- Box 24B: Place of service "10" for every line
+- Box 25: EIN
+- Box 27: Assignment accepted
 - Box 28: Auto-calculated from service lines
+- Box 29: `$0.00`
 
 ✅ **Smart Fields**:
 - If "Self" selected in Box 6, patient info auto-fills insured fields (Boxes 4, 7)
 - Auto-format phone numbers (XXX-XXX-XXXX)
 - Auto-format currency fields (right-to-left with decimals)
 - State dropdowns for all address fields
-- SSN/EIN validation and formatting
-
-✅ **Conditional Logic**:
-- Box 9 fields disabled if "No other health benefit plan" (Box 11d)
-- Auto accident state field enabled only if accident = YES (Box 10b)
-- Outside lab charges enabled only if outside lab = YES (Box 20)
+- EIN, NPI, patient-control-number, diagnosis-pointer, and total validation
+- Sandbox fixture is isolated from production-like defaults
 
 ✅ **Dynamic Diagnosis Pointers**:
-- Box 24E dropdown shows diagnosis letters with actual codes from Box 21
-- Example: "A (E11.9)" shows both pointer and diagnosis
+- Box 24E accepts up to four A-L pointers and validates them against populated Box 21 positions
+- Additional service lines can be added for diagnoses beyond the defaults
 
 ✅ **Tooltips**:
 - Hover over ⓘ icons in Box 24 for field descriptions
@@ -302,14 +301,16 @@ Add up to 50 service lines with:
 ### Actions
 
 1. **Validate Claim** - Check claim data against API requirements without submitting
-2. **Submit Claim** - Submit claim to insurance payer for processing
+2. **Submit Claim** - Exercise the selected Optum submission endpoint; this prototype is approved only for the canned sandbox workflow
 3. **Generate PDF** - Create downloadable CMS 1500 PDF with form data
 
 ### Sandbox Test Data
 
 When in **Sandbox mode**, the form can use test data for validation:
-- Trading Partner Service ID: `00001`
-- Test member IDs and NPIs provided in Optum sandbox documentation
+- Trading Partner Service ID: `9496`
+- Payer: `EXTRA HEALTHY INSURANCE`
+- The Load Default Data action supplies Optum's canned patient, billing, service-facility, submitter, and control-number values
+- Canned sandbox success verifies authentication, transport, and serialization; it does not establish payer adjudication or clinical correctness
 
 ## 🔑 API Credentials
 
@@ -351,7 +352,7 @@ Credential selection is based on the environment sent by the frontend:
 
 ### API Requirements & Field Mapping
 
-Two comprehensive documents are included to help understand the API integration:
+Two historical analysis documents are included to explain how the original API mapping was derived. They predate the completed limited-workflow prototype; use the Claim Form implementation and this README for current behavior.
 
 #### 1. **API_Requirements_Analysis.md**
 Complete analysis of what the Professional Claims V3 API requires:
@@ -361,10 +362,7 @@ Complete analysis of what the Professional Claims V3 API requires:
 - ✅ Optional but recommended fields
 - ✅ Implementation priority guide
 
-**Key Findings**:
-- 3 critical missing required fields (Submitter, Receiver, Box 22 connection)
-- Fields that exist but aren't connected to API
-- Fields on form that aren't in API
+The gaps recorded in that analysis—such as submitter, receiver, and Box 22 wiring—have been addressed for the supported new-primary-commercial workflow. Items describing secondary or conditional claims remain intentionally out of scope rather than pending prototype work.
 
 #### 2. **CMS1500_API_Field_Mapping.md**
 Field-by-field mapping between CMS 1500 form and API:
@@ -450,28 +448,19 @@ npm install
 
 ## 🔮 Roadmap
 
-### Immediate Priority
-- [ ] Add Submitter information fields (required by API, not on CMS 1500)
-- [ ] Add Receiver/Payer name field (required by API)
-- [ ] Connect Box 22 (Resubmission Code) to API
-- [ ] Add Provider Type selector (Organization vs Person)
+### Prototype Baseline
+- [x] Add Optum submitter, receiver, payer-routing, billing, and service-facility fields
+- [x] Support new primary commercial claims with manual payer ID/name entry
+- [x] Connect CMS-1500 diagnoses, service lines, totals, rendering providers, and QW-line CLIA references to the request
+- [x] Display validation/submission request details and Optum clearinghouse tracking number
 
 ### Near Term
-- [ ] Implement Claims Status tab
-- [ ] Implement Claims Reconciliation tab
-- [ ] Add date fields (Boxes 14-18) connection to API
-- [ ] Add Referring Provider fields (Box 17)
-- [ ] Add Prior Authorization field (Box 23) connection
+- [ ] Build the production claims workflow in Novo with employee claims authorization
+- [ ] Persist claim drafts, immutable attempts, validation responses, and submission responses
+- [ ] Derive claim data from signed visits, eligibility snapshots, CPT rates, and state/federal practice records
+- [ ] Implement claims status and reconciliation flows
 
-### Future Enhancements
-- [ ] Secondary insurance (Boxes 9-9d) full implementation
-- [ ] Claims history and search
-- [ ] Bulk claim submission
-- [ ] ERA (Electronic Remittance Advice) processing
-- [ ] PDF claim form download improvements
-- [ ] Real-time claim status updates
-- [ ] Payment reconciliation tools
-- [ ] Reports and analytics
+Secondary, corrected, accident, employment, hospitalization, referral, prior-authorization, and other conditional claim workflows are intentionally outside the supported Reperio telehealth scope.
 
 ## 📄 License
 
