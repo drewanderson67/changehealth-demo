@@ -49,6 +49,7 @@ export interface Provider {
 
 export interface Subscriber {
   paymentResponsibilityLevelCode: 'P';
+  // Reperio's sole collected patient member ID; populated only for Self.
   memberId?: string;
   ssn?: string;
   firstName?: string;
@@ -74,6 +75,7 @@ export interface Dependent {
   dateOfBirth: string;
   relationshipToSubscriberCode: '01' | '19' | '20' | '39' | '40' | '53' | 'G8';
   ssn?: string;
+  // Reperio's sole collected patient member ID; populated for non-Self claims.
   memberId?: string;
   address?: Address;
   contactInformation?: ContactInformation;

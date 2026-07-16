@@ -224,7 +224,7 @@ The claim form follows CMS-1500 box order while intentionally supporting only ne
 
 #### Patient & Insured Information (Boxes 1-11)
 - **Box 1**: Commercial insurance (`CI`) only
-- **Box 1a**: Insured/subscriber member ID, always sent as `subscriber.memberId` (including when the patient is a dependent)
+- **Box 1a**: The one member ID collected from the patient. It is sent as `subscriber.memberId` for Self and `dependent.memberId` for Spouse, Child, or Other; the request never sends both.
 - **Boxes 2-5**: Patient demographics and address
 - **Box 6**: Patient relationship to insured (Self, Spouse, Child, Other)
 - **Boxes 4, 7**: Insured's name and address (auto-fills if relationship is "Self")

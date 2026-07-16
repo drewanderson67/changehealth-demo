@@ -95,6 +95,7 @@ const OPTUM_SANDBOX_FIXTURE = {
     }
   },
   spouse: {
+    memberId: '0000000002',
     firstName: 'janeone',
     lastName: 'doeOne',
     gender: 'F' as const,
@@ -135,11 +136,11 @@ const OPTUM_SANDBOX_FIXTURE = {
 
 const OPTUM_SANDBOX_PATIENT_CONTROL_NUMBERS = new Set(['00000', '12345', '00001', '00002']);
 
-function createOptumSandboxSubscriber(): Subscriber {
+function createOptumSandboxSubscriber(includePatientMemberId = true): Subscriber {
   const fixture = OPTUM_SANDBOX_FIXTURE.subscriber;
   return {
     paymentResponsibilityLevelCode: 'P',
-    memberId: fixture.memberId,
+    memberId: includePatientMemberId ? fixture.memberId : undefined,
     firstName: fixture.firstName,
     lastName: fixture.lastName,
     gender: fixture.gender,
@@ -157,14 +158,13 @@ function createOptumSandboxSubscriber(): Subscriber {
 function createOptumSandboxSpouse(): Dependent {
   const fixture = OPTUM_SANDBOX_FIXTURE.spouse;
   return {
+    memberId: fixture.memberId,
     firstName: fixture.firstName,
     lastName: fixture.lastName,
     gender: fixture.gender,
     dateOfBirth: fixture.dateOfBirth,
     relationshipToSubscriberCode: '01',
     address: { ...fixture.address }
-    // Optum's example includes an optional dependent member ID. This limited
-    // workflow deliberately keeps Box 1a on subscriber.memberId and omits it.
   };
 }
 
@@ -391,6 +391,10 @@ function formatDateForInput(dateStr: string): string {
     return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
   }
   return dateStr;
+}
+
+function firstNonBlank(...values: Array<string | undefined>): string | undefined {
+  return values.find((value) => value?.trim())?.trim();
 }
 
 function normalizeAddressForEnvironment(
@@ -625,7 +629,12 @@ export function applyPatientRelationship(
     if (relationship === '01') {
       return {
         ...previous,
-        subscriber: createOptumSandboxSubscriber(),
+        // Reperio collects one member ID from the patient. In the canned
+        // spouse case Jane is the patient, so John remains the subscriber
+        // identity but does not receive Jane's member ID. This intentionally
+        // differs from Optum's published two-ID example to exercise Reperio's
+        // production one-patient-ID contract.
+        subscriber: createOptumSandboxSubscriber(false),
         dependent: createOptumSandboxSpouse()
       };
     }
@@ -647,6 +656,7 @@ export function applyPatientRelationship(
           address: patient.address,
           contactInformation: patient.contactInformation
         } : {}),
+        memberId: patient?.memberId || previous.subscriber?.memberId,
         paymentResponsibilityLevelCode: 'P'
       },
       dependent: undefined
@@ -660,14 +670,17 @@ export function applyPatientRelationship(
     ...previous,
     subscriber: {
       ...(changingFromSelf ? {
-        memberId: previous.subscriber?.memberId,
         policyNumber: previous.subscriber?.policyNumber,
         groupNumber: previous.subscriber?.groupNumber,
         subscriberGroupName: previous.subscriber?.subscriberGroupName
       } : previous.subscriber),
+      // The sole collected member ID follows the patient into the dependent
+      // object for spouse, child, and other relationship claims.
+      memberId: undefined,
       paymentResponsibilityLevelCode: 'P'
     },
     dependent: {
+      memberId: currentPatient?.memberId,
       firstName: currentPatient?.firstName || '',
       lastName: currentPatient?.lastName || '',
       middleName: currentPatient?.middleName,
@@ -686,7 +699,9 @@ export function applyPatientRelationship(
   };
 }
 
-function normalizeSavedFormData(savedData: Partial<ClaimSubmissionRequest>): Partial<ClaimSubmissionRequest> {
+// Exported to cover local-draft migrations for the exclusive patient member ID.
+// eslint-disable-next-line react-refresh/only-export-components
+export function normalizeSavedFormData(savedData: Partial<ClaimSubmissionRequest>): Partial<ClaimSubmissionRequest> {
   const initial = createInitialFormData();
   const savedClaimInformation = savedData.claimInformation;
   const savedSubscriber = savedData.subscriber;
@@ -694,16 +709,23 @@ function normalizeSavedFormData(savedData: Partial<ClaimSubmissionRequest>): Par
     ? savedData.dependent
     : undefined;
   const savedDependent = selfDependent ? undefined : savedData.dependent;
-  // Older prototype drafts incorrectly moved Box 1a to dependent.memberId.
-  // CMS-1500 Box 1a and Optum both expect the insured/subscriber identifier,
-  // including when the patient is a spouse, child, or other dependent.
-  const subscriberMemberId = savedSubscriber?.memberId || savedDependent?.memberId;
+  const isSavedOptumSandboxFixture = isOptumSandboxFixtureData(savedData);
+  const isSavedSandboxSpouse = isSavedOptumSandboxFixture
+    && savedDependent?.relationshipToSubscriberCode === '01';
+  // Reconcile older drafts into the one-ID invariant without losing the value:
+  // the collected ID belongs to whichever object represents the patient. An
+  // old canned spouse draft receives Jane's published sandbox ID rather than
+  // incorrectly migrating John's prior subscriber ID onto Jane.
+  const patientMemberId = isSavedSandboxSpouse
+    ? OPTUM_SANDBOX_FIXTURE.spouse.memberId
+    : savedDependent
+      ? firstNonBlank(savedDependent.memberId, savedSubscriber?.memberId)
+      : firstNonBlank(savedSubscriber?.memberId, selfDependent?.memberId);
   const dependent = savedDependent ? {
     ...savedDependent,
-    memberId: undefined
+    memberId: patientMemberId
   } : undefined;
   const savedPatientControlNumber = savedClaimInformation?.patientControlNumber?.trim() || '';
-  const isSavedOptumSandboxFixture = isOptumSandboxFixtureData(savedData);
 
   return {
     ...savedData,
@@ -720,7 +742,7 @@ function normalizeSavedFormData(savedData: Partial<ClaimSubmissionRequest>): Par
         address: selfDependent.address || savedSubscriber?.address,
         contactInformation: selfDependent.contactInformation || savedSubscriber?.contactInformation
       } : {}),
-      memberId: subscriberMemberId || selfDependent?.memberId,
+      memberId: dependent ? undefined : patientMemberId,
       paymentResponsibilityLevelCode: 'P'
     },
     dependent,
@@ -862,9 +884,13 @@ export function buildPrimaryClaimRequest(
 
   const subscriberSource = formData.subscriber;
   const dependentSource = formData.dependent;
-  const subscriberMemberId = (subscriberSource?.memberId || dependentSource?.memberId || '').trim();
+  // Reperio collects one member ID from the patient. Prefer the relationship-
+  // appropriate root, while accepting the old root as a migration fallback.
+  const patientMemberId = dependentSource
+    ? (firstNonBlank(dependentSource.memberId, subscriberSource?.memberId) || '')
+    : (firstNonBlank(subscriberSource?.memberId) || '');
   const subscriberName = [subscriberSource?.firstName, subscriberSource?.lastName].filter(Boolean).join(' ').trim();
-  requireValue(subscriberMemberId, "Box 1a - Insured's member ID");
+  requireValue(patientMemberId, 'Box 1a - Patient member ID');
   requireValue(subscriberSource?.firstName, "Box 4 - Insured's first name");
   requireValue(subscriberSource?.lastName, "Box 4 - Insured's last name");
   requireValue(subscriberSource?.dateOfBirth, "Box 11a - Insured's date of birth");
@@ -878,7 +904,8 @@ export function buildPrimaryClaimRequest(
     ...subscriberSource,
     paymentResponsibilityLevelCode: 'P',
     subscriberGroupName: undefined,
-    memberId: subscriberMemberId,
+    // A dependent claim carries the sole patient ID in Loop 2010CA instead.
+    memberId: dependentSource ? undefined : patientMemberId,
     firstName: subscriberSource?.firstName?.trim(),
     lastName: subscriberSource?.lastName?.trim(),
     dateOfBirth: formatDateForAPI(subscriberSource?.dateOfBirth || ''),
@@ -904,9 +931,7 @@ export function buildPrimaryClaimRequest(
     const dependentName = [dependentSource.firstName, dependentSource.lastName].filter(Boolean).join(' ').trim();
     dependent = {
       ...dependentSource,
-      // Box 1a belongs to the subscriber. A dependent may be the patient, but
-      // this constrained workflow must not serialize that ID on the dependent.
-      memberId: undefined,
+      memberId: patientMemberId,
       firstName: dependentSource.firstName?.trim() || '',
       lastName: dependentSource.lastName?.trim() || '',
       dateOfBirth: formatDateForAPI(dependentSource.dateOfBirth),
@@ -1910,13 +1935,13 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
             <label className={`text-sm font-bold mb-2 block ${REQUIRED_LABEL_CLASS}`}>1a. INSURED'S I.D. NUMBER</label>
             <input
               type="text"
-              value={formData.subscriber?.memberId || ''}
-              onChange={(e) => updateField(['subscriber', 'memberId'], e.target.value)}
+              value={patient?.memberId || ''}
+              onChange={(e) => updateField([patientFieldRoot, 'memberId'], e.target.value)}
               maxLength={29}
               className={`w-full p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
             />
             <p className="mt-1 text-xs text-gray-500">
-              Insured/subscriber member ID; always submitted as <code>subscriber.memberId</code>, including when the patient is a dependent.
+              Patient-provided member ID; submitted as <code>subscriber.memberId</code> for Self and <code>dependent.memberId</code> for Spouse, Child, or Other.
             </p>
           </div>
 
