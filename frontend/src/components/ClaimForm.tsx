@@ -6,7 +6,8 @@ import type {
   Provider,
   Subscriber,
   Dependent,
-  ServiceFacilityLocation
+  ServiceFacilityLocation,
+  Address
 } from '../types/claims';
 import type { Environment } from '../types/eligibility';
 import { validateClaim, submitClaim, generateClaimPDF } from '../services/claimsApi';
@@ -93,6 +94,18 @@ const OPTUM_SANDBOX_FIXTURE = {
       postalCode: '981010000'
     }
   },
+  spouse: {
+    firstName: 'janeone',
+    lastName: 'doeOne',
+    gender: 'F' as const,
+    dateOfBirth: '19800102',
+    address: {
+      address1: '123 address1',
+      city: 'city1',
+      state: 'wa',
+      postalCode: '981010000'
+    }
+  },
   billing: {
     organizationName: 'HAPPY DOCTORS GROUPPRACTICE',
     npi: '1760854442',
@@ -121,6 +134,39 @@ const OPTUM_SANDBOX_FIXTURE = {
 };
 
 const OPTUM_SANDBOX_PATIENT_CONTROL_NUMBERS = new Set(['00000', '12345', '00001', '00002']);
+
+function createOptumSandboxSubscriber(): Subscriber {
+  const fixture = OPTUM_SANDBOX_FIXTURE.subscriber;
+  return {
+    paymentResponsibilityLevelCode: 'P',
+    memberId: fixture.memberId,
+    firstName: fixture.firstName,
+    lastName: fixture.lastName,
+    gender: fixture.gender,
+    dateOfBirth: fixture.dateOfBirth,
+    policyNumber: fixture.policyNumber,
+    groupNumber: fixture.groupNumber,
+    address: { ...fixture.address },
+    contactInformation: {
+      name: `${fixture.firstName} ${fixture.lastName}`,
+      phoneNumber: fixture.phoneNumber
+    }
+  };
+}
+
+function createOptumSandboxSpouse(): Dependent {
+  const fixture = OPTUM_SANDBOX_FIXTURE.spouse;
+  return {
+    firstName: fixture.firstName,
+    lastName: fixture.lastName,
+    gender: fixture.gender,
+    dateOfBirth: fixture.dateOfBirth,
+    relationshipToSubscriberCode: '01',
+    address: { ...fixture.address }
+    // Optum's example includes an optional dependent member ID. This limited
+    // workflow deliberately keeps Box 1a on subscriber.memberId and omits it.
+  };
+}
 
 const DEFAULT_DIAGNOSES = [
   { diagnosisTypeCode: 'ABK', diagnosisCode: 'Z00.00' },
@@ -347,6 +393,22 @@ function formatDateForInput(dateStr: string): string {
   return dateStr;
 }
 
+function normalizeAddressForEnvironment(
+  address: Address | undefined,
+  isOptumSandbox: boolean
+): Address | undefined {
+  if (!address) return undefined;
+
+  return {
+    ...address,
+    // Optum's canned sandbox only accepts lowercase `wa`/`tn`. Production
+    // claims continue to use the standard uppercase postal abbreviation.
+    state: address.state
+      ? (isOptumSandbox ? address.state.toLowerCase() : address.state.toUpperCase())
+      : address.state
+  };
+}
+
 function createEmptyServiceLine(): ServiceLine {
   return {
     serviceDate: '',
@@ -409,21 +471,7 @@ function createOptumSandboxDefaultData(serviceDate: string): Partial<ClaimSubmis
     receiver: {
       organizationName: fixture.payerName
     },
-    subscriber: {
-      paymentResponsibilityLevelCode: 'P',
-      memberId: fixture.subscriber.memberId,
-      firstName: fixture.subscriber.firstName,
-      lastName: fixture.subscriber.lastName,
-      gender: fixture.subscriber.gender,
-      dateOfBirth: fixture.subscriber.dateOfBirth,
-      policyNumber: fixture.subscriber.policyNumber,
-      groupNumber: fixture.subscriber.groupNumber,
-      address: { ...fixture.subscriber.address },
-      contactInformation: {
-        name: `${fixture.subscriber.firstName} ${fixture.subscriber.lastName}`,
-        phoneNumber: fixture.subscriber.phoneNumber
-      }
-    },
+    subscriber: createOptumSandboxSubscriber(),
     billing: {
       providerType: 'BillingProvider',
       organizationName: fixture.billing.organizationName,
@@ -549,6 +597,93 @@ function isOptumSandboxFixtureData(data: Partial<ClaimSubmissionRequest>): boole
   const patientControlNumber = data.claimInformation?.patientControlNumber?.trim() || '';
   return data.tradingPartnerServiceId === OPTUM_SANDBOX_FIXTURE.payerId
     && OPTUM_SANDBOX_PATIENT_CONTROL_NUMBERS.has(patientControlNumber);
+}
+
+type PatientRelationship = '18' | Dependent['relationshipToSubscriberCode'];
+
+// Exported so the sandbox identity fixture and production relationship
+// transition can be covered without driving the full form.
+// eslint-disable-next-line react-refresh/only-export-components
+export function applyPatientRelationship(
+  previous: Partial<ClaimSubmissionRequest>,
+  relationship: PatientRelationship,
+  environment: Environment
+): Partial<ClaimSubmissionRequest> {
+  // SANDBOX-ONLY EXCEPTION: Optum validates identity fields against its
+  // published canned John/Jane spouse pair. Preserve the insured John record
+  // and populate Jane as the patient instead of copying John into both roles.
+  // Production relationship changes retain the editable data.
+  if (environment === 'sandbox' && isOptumSandboxFixtureData(previous)) {
+    if (relationship === '18') {
+      return {
+        ...previous,
+        subscriber: createOptumSandboxSubscriber(),
+        dependent: undefined
+      };
+    }
+
+    if (relationship === '01') {
+      return {
+        ...previous,
+        subscriber: createOptumSandboxSubscriber(),
+        dependent: createOptumSandboxSpouse()
+      };
+    }
+  }
+
+  if (relationship === '18') {
+    const patient = previous.dependent;
+    return {
+      ...previous,
+      subscriber: {
+        ...previous.subscriber,
+        ...(patient ? {
+          firstName: patient.firstName,
+          lastName: patient.lastName,
+          middleName: patient.middleName,
+          suffix: patient.suffix,
+          gender: patient.gender,
+          dateOfBirth: patient.dateOfBirth,
+          address: patient.address,
+          contactInformation: patient.contactInformation
+        } : {}),
+        paymentResponsibilityLevelCode: 'P'
+      },
+      dependent: undefined
+    };
+  }
+
+  const changingFromSelf = !previous.dependent;
+  const currentPatient = previous.dependent || previous.subscriber;
+
+  return {
+    ...previous,
+    subscriber: {
+      ...(changingFromSelf ? {
+        memberId: previous.subscriber?.memberId,
+        policyNumber: previous.subscriber?.policyNumber,
+        groupNumber: previous.subscriber?.groupNumber,
+        subscriberGroupName: previous.subscriber?.subscriberGroupName
+      } : previous.subscriber),
+      paymentResponsibilityLevelCode: 'P'
+    },
+    dependent: {
+      firstName: currentPatient?.firstName || '',
+      lastName: currentPatient?.lastName || '',
+      middleName: currentPatient?.middleName,
+      suffix: currentPatient?.suffix,
+      gender: currentPatient?.gender || 'U',
+      dateOfBirth: currentPatient?.dateOfBirth || '',
+      relationshipToSubscriberCode: relationship,
+      address: currentPatient?.address || {
+        address1: '',
+        city: '',
+        state: '',
+        postalCode: ''
+      },
+      contactInformation: currentPatient?.contactInformation
+    }
+  };
 }
 
 function normalizeSavedFormData(savedData: Partial<ClaimSubmissionRequest>): Partial<ClaimSubmissionRequest> {
@@ -747,7 +882,7 @@ export function buildPrimaryClaimRequest(
     firstName: subscriberSource?.firstName?.trim(),
     lastName: subscriberSource?.lastName?.trim(),
     dateOfBirth: formatDateForAPI(subscriberSource?.dateOfBirth || ''),
-    address: subscriberSource?.address ? { ...subscriberSource.address } : undefined,
+    address: normalizeAddressForEnvironment(subscriberSource?.address, isOptumSandbox),
     contactInformation: subscriberSource?.contactInformation ? {
       ...subscriberSource.contactInformation,
       name: subscriberSource.contactInformation.name?.trim() || subscriberName || 'Subscriber'
@@ -775,7 +910,7 @@ export function buildPrimaryClaimRequest(
       firstName: dependentSource.firstName?.trim() || '',
       lastName: dependentSource.lastName?.trim() || '',
       dateOfBirth: formatDateForAPI(dependentSource.dateOfBirth),
-      address: dependentSource.address ? { ...dependentSource.address } : undefined,
+      address: normalizeAddressForEnvironment(dependentSource.address, isOptumSandbox),
       contactInformation: dependentSource.contactInformation ? {
         ...dependentSource.contactInformation,
         name: dependentSource.contactInformation.name?.trim() || dependentName || 'Patient'
@@ -794,7 +929,8 @@ export function buildPrimaryClaimRequest(
   const serviceFacilityLocation: ServiceFacilityLocation = {
     ...facilitySource,
     organizationName: facilitySource?.organizationName?.trim() || '',
-    address: facilitySource?.address || { address1: '', city: '' },
+    address: normalizeAddressForEnvironment(facilitySource?.address, isOptumSandbox)
+      || { address1: '', city: '' },
     npi: facilitySource?.npi?.replace(/\D/g, ''),
     phoneName: undefined,
     phoneNumber: undefined
@@ -844,7 +980,7 @@ export function buildPrimaryClaimRequest(
     ssn: undefined,
     taxonomyCode: undefined,
     address: isOptumSandbox
-      ? billingSource?.address
+      ? normalizeAddressForEnvironment(billingSource?.address, true)
       : { ...REPERIO_BILLING_ADDRESS },
     contactInformation: isOptumSandbox
       ? {
@@ -1267,62 +1403,8 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
     });
   };
 
-  const setPatientRelationship = (relationship: '18' | Dependent['relationshipToSubscriberCode']) => {
-    setFormData((prev) => {
-      if (relationship === '18') {
-        const patient = prev.dependent;
-        return {
-          ...prev,
-          subscriber: {
-            ...prev.subscriber,
-            ...(patient ? {
-              firstName: patient.firstName,
-              lastName: patient.lastName,
-              middleName: patient.middleName,
-              suffix: patient.suffix,
-              gender: patient.gender,
-              dateOfBirth: patient.dateOfBirth,
-              address: patient.address,
-              contactInformation: patient.contactInformation
-            } : {}),
-            paymentResponsibilityLevelCode: 'P'
-          },
-          dependent: undefined
-        };
-      }
-
-      const changingFromSelf = !prev.dependent;
-      const currentPatient = prev.dependent || prev.subscriber;
-
-      return {
-        ...prev,
-        subscriber: {
-          ...(changingFromSelf ? {
-            memberId: prev.subscriber?.memberId,
-            policyNumber: prev.subscriber?.policyNumber,
-            groupNumber: prev.subscriber?.groupNumber,
-            subscriberGroupName: prev.subscriber?.subscriberGroupName
-          } : prev.subscriber),
-          paymentResponsibilityLevelCode: 'P'
-        },
-        dependent: {
-          firstName: currentPatient?.firstName || '',
-          lastName: currentPatient?.lastName || '',
-          middleName: currentPatient?.middleName,
-          suffix: currentPatient?.suffix,
-          gender: currentPatient?.gender || 'U',
-          dateOfBirth: currentPatient?.dateOfBirth || '',
-          relationshipToSubscriberCode: relationship,
-          address: currentPatient?.address || {
-            address1: '',
-            city: '',
-            state: '',
-            postalCode: ''
-          },
-          contactInformation: currentPatient?.contactInformation
-        }
-      };
-    });
+  const setPatientRelationship = (relationship: PatientRelationship) => {
+    setFormData((previous) => applyPatientRelationship(previous, relationship, environment));
   };
 
   const addServiceLine = () => {
@@ -1977,7 +2059,10 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 >
                   <option value="">State</option>
                   {US_STATES.map(state => (
-                    <option key={state.code} value={state.code}>
+                    <option
+                      key={state.code}
+                      value={isOptumSandbox ? state.code.toLowerCase() : state.code}
+                    >
                       {state.code} - {state.name}
                     </option>
                   ))}
@@ -2026,25 +2111,38 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 />
                 <span className="text-sm">Spouse</span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label
+                className={`flex items-center gap-2 ${isOptumSandbox ? 'cursor-not-allowed text-gray-400' : 'cursor-pointer'}`}
+                title={isOptumSandbox ? "Optum's published canned claim uses the spouse relationship" : undefined}
+              >
                 <input
                   type="checkbox"
                   checked={formData.dependent?.relationshipToSubscriberCode === '19'}
                   onChange={(e) => e.target.checked && setPatientRelationship('19')}
+                  disabled={isOptumSandbox}
                   className={`w-4 h-4 ${REQUIRED_FIELD_CLASS}`}
                 />
                 <span className="text-sm">Child</span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label
+                className={`flex items-center gap-2 ${isOptumSandbox ? 'cursor-not-allowed text-gray-400' : 'cursor-pointer'}`}
+                title={isOptumSandbox ? "Optum's published canned claim uses the spouse relationship" : undefined}
+              >
                 <input
                   type="checkbox"
                   checked={formData.dependent?.relationshipToSubscriberCode === 'G8'}
                   onChange={(e) => e.target.checked && setPatientRelationship('G8')}
+                  disabled={isOptumSandbox}
                   className={`w-4 h-4 ${REQUIRED_FIELD_CLASS}`}
                 />
                 <span className="text-sm">Other</span>
               </label>
             </div>
+            {isOptumSandbox && (
+              <p className="mt-2 text-xs text-gray-500">
+                Sandbox testing uses Optum&apos;s published Self/Spouse canned identities; Child and Other remain available in production.
+              </p>
+            )}
           </div>
 
           {/* Box 7 */}
@@ -2080,7 +2178,10 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 >
                   <option value="">State</option>
                   {US_STATES.map(state => (
-                    <option key={state.code} value={state.code}>
+                    <option
+                      key={state.code}
+                      value={isOptumSandbox ? state.code.toLowerCase() : state.code}
+                    >
                       {state.code} - {state.name}
                     </option>
                   ))}

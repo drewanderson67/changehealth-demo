@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ClaimSubmissionRequest, Dependent } from '../types/claims';
-import { buildPrimaryClaimRequest } from './ClaimForm';
+import { applyPatientRelationship, buildPrimaryClaimRequest } from './ClaimForm';
 
 const buildOptions = {
   environment: 'sandbox' as const,
@@ -149,5 +149,77 @@ describe('buildPrimaryClaimRequest', () => {
     expect(request.subscriber.memberId).toBe('SUBSCRIBER-BOX-1A');
     expect(request.dependent?.memberId).toBeUndefined();
     expect(JSON.stringify(request.dependent)).not.toContain('"memberId"');
+  });
+
+  it('normalizes address states for Optum canned sandbox requests', () => {
+    const formData = createValidSandboxClaim();
+    formData.subscriber.address!.state = 'WA';
+    formData.dependent = createDependent();
+    formData.dependent.address!.state = 'WA';
+    formData.billing.address!.state = 'TN';
+    formData.claimInformation.serviceFacilityLocation!.address.state = 'TN';
+
+    const request = buildPrimaryClaimRequest(formData, buildOptions);
+
+    expect(request.subscriber.address?.state).toBe('wa');
+    expect(request.dependent?.address?.state).toBe('wa');
+    expect(request.billing.address?.state).toBe('tn');
+    expect(request.claimInformation.serviceFacilityLocation?.address.state).toBe('tn');
+  });
+
+  it('keeps standard uppercase address states in production requests', () => {
+    const formData = createValidSandboxClaim();
+    formData.subscriber.address!.state = 'wa';
+    formData.dependent = createDependent();
+    formData.dependent.address!.state = 'wa';
+    formData.claimInformation.serviceFacilityLocation!.address.state = 'or';
+    formData.claimInformation.patientControlNumber = 'RC-123456789012';
+    formData.claimInformation.serviceLines[0].renderingProvider = {
+      providerType: 'RenderingProvider',
+      firstName: 'Test',
+      lastName: 'Provider',
+      npi: '1760854442'
+    };
+
+    const request = buildPrimaryClaimRequest(formData, {
+      ...buildOptions,
+      environment: 'production'
+    });
+
+    expect(request.subscriber.address?.state).toBe('WA');
+    expect(request.dependent?.address?.state).toBe('WA');
+    expect(request.claimInformation.serviceFacilityLocation?.address.state).toBe('OR');
+    expect(request.billing.address?.state).toBe('OR');
+  });
+});
+
+describe('applyPatientRelationship', () => {
+  it('loads the Optum canned spouse while preserving the canned subscriber', () => {
+    const formData = createValidSandboxClaim();
+
+    const spouseClaim = applyPatientRelationship(formData, '01', 'sandbox');
+
+    expect(spouseClaim.subscriber?.memberId).toBe('0000000001');
+    expect(spouseClaim.subscriber?.firstName).toBe('johnone');
+    expect(spouseClaim.subscriber?.address?.state).toBe('wa');
+    expect(spouseClaim.dependent).toMatchObject({
+      firstName: 'janeone',
+      lastName: 'doeOne',
+      gender: 'F',
+      dateOfBirth: '19800102',
+      relationshipToSubscriberCode: '01',
+      address: { state: 'wa' }
+    });
+    expect(spouseClaim.dependent?.memberId).toBeUndefined();
+  });
+
+  it('does not inject the canned spouse into production relationship changes', () => {
+    const formData = createValidSandboxClaim();
+
+    const spouseClaim = applyPatientRelationship(formData, '01', 'production');
+
+    expect(spouseClaim.dependent?.firstName).toBe('johnone');
+    expect(spouseClaim.subscriber?.firstName).toBeUndefined();
+    expect(spouseClaim.subscriber?.memberId).toBe('0000000001');
   });
 });
