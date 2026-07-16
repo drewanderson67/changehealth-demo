@@ -27,6 +27,17 @@ function validateRequiredFields(data: ClaimSubmissionRequest): string[] {
   if (!data.receiver?.organizationName) {
     errors.push('Receiver organization name is required');
   }
+
+  // This prototype intentionally supports one payer-recognized patient ID.
+  // That patient is always serialized in the subscriber loop; a true dependent
+  // request would require a second policyholder member ID that Reperio does not
+  // collect in this workflow.
+  if (!data.subscriber?.memberId?.trim()) {
+    errors.push('Patient subscriber member ID is required');
+  }
+  if ((data as ClaimSubmissionRequest & { dependent?: unknown }).dependent) {
+    errors.push('Dependent claim payloads are not supported by this workflow');
+  }
   
   // Check billing provider
   if (!data.billing?.providerType) {
@@ -128,4 +139,3 @@ export async function generateClaimPDF(
 
   return response.blob();
 }
-

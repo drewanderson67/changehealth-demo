@@ -5,7 +5,6 @@ import type {
   ClaimResponse,
   Provider,
   Subscriber,
-  Dependent,
   ServiceFacilityLocation,
   Address
 } from '../types/claims';
@@ -39,6 +38,16 @@ type ProviderOption = {
   phone?: string;
   contactName?: string;
   contactEmail?: string;
+};
+
+// Compatibility shape for localStorage drafts created before this prototype
+// adopted the single patient-as-subscriber model. It is deliberately local so
+// new claim request types cannot accidentally reintroduce dependent payloads.
+type LegacyDependentDraft = Partial<Omit<Subscriber, 'paymentResponsibilityLevelCode'>> & {
+  relationshipToSubscriberCode?: string;
+};
+type LegacySavedClaimFormData = Partial<ClaimSubmissionRequest> & {
+  dependent?: LegacyDependentDraft;
 };
 
 const PROVIDER_OPTIONS = providerOptionsData as ProviderOption[];
@@ -94,19 +103,6 @@ const OPTUM_SANDBOX_FIXTURE = {
       postalCode: '981010000'
     }
   },
-  spouse: {
-    memberId: '0000000002',
-    firstName: 'janeone',
-    lastName: 'doeOne',
-    gender: 'F' as const,
-    dateOfBirth: '19800102',
-    address: {
-      address1: '123 address1',
-      city: 'city1',
-      state: 'wa',
-      postalCode: '981010000'
-    }
-  },
   billing: {
     organizationName: 'HAPPY DOCTORS GROUPPRACTICE',
     npi: '1760854442',
@@ -136,11 +132,11 @@ const OPTUM_SANDBOX_FIXTURE = {
 
 const OPTUM_SANDBOX_PATIENT_CONTROL_NUMBERS = new Set(['00000', '12345', '00001', '00002']);
 
-function createOptumSandboxSubscriber(includePatientMemberId = true): Subscriber {
+function createOptumSandboxSubscriber(): Subscriber {
   const fixture = OPTUM_SANDBOX_FIXTURE.subscriber;
   return {
     paymentResponsibilityLevelCode: 'P',
-    memberId: includePatientMemberId ? fixture.memberId : undefined,
+    memberId: fixture.memberId,
     firstName: fixture.firstName,
     lastName: fixture.lastName,
     gender: fixture.gender,
@@ -152,19 +148,6 @@ function createOptumSandboxSubscriber(includePatientMemberId = true): Subscriber
       name: `${fixture.firstName} ${fixture.lastName}`,
       phoneNumber: fixture.phoneNumber
     }
-  };
-}
-
-function createOptumSandboxSpouse(): Dependent {
-  const fixture = OPTUM_SANDBOX_FIXTURE.spouse;
-  return {
-    memberId: fixture.memberId,
-    firstName: fixture.firstName,
-    lastName: fixture.lastName,
-    gender: fixture.gender,
-    dateOfBirth: fixture.dateOfBirth,
-    relationshipToSubscriberCode: '01',
-    address: { ...fixture.address }
   };
 }
 
@@ -603,166 +586,67 @@ function isOptumSandboxFixtureData(data: Partial<ClaimSubmissionRequest>): boole
     && OPTUM_SANDBOX_PATIENT_CONTROL_NUMBERS.has(patientControlNumber);
 }
 
-type PatientRelationship = '18' | Dependent['relationshipToSubscriberCode'];
-
-// Exported so the sandbox identity fixture and production relationship
-// transition can be covered without driving the full form.
-// eslint-disable-next-line react-refresh/only-export-components
-export function applyPatientRelationship(
-  previous: Partial<ClaimSubmissionRequest>,
-  relationship: PatientRelationship,
-  environment: Environment
-): Partial<ClaimSubmissionRequest> {
-  // SANDBOX-ONLY EXCEPTION: Optum validates identity fields against its
-  // published canned John/Jane spouse pair. Preserve the insured John record
-  // and populate Jane as the patient instead of copying John into both roles.
-  // Production relationship changes retain the editable data.
-  if (environment === 'sandbox' && isOptumSandboxFixtureData(previous)) {
-    if (relationship === '18') {
-      return {
-        ...previous,
-        subscriber: createOptumSandboxSubscriber(),
-        dependent: undefined
-      };
-    }
-
-    if (relationship === '01') {
-      return {
-        ...previous,
-        // Reperio collects one member ID from the patient. In the canned
-        // spouse case Jane is the patient, so John remains the subscriber
-        // identity but does not receive Jane's member ID. This intentionally
-        // differs from Optum's published two-ID example to exercise Reperio's
-        // production one-patient-ID contract.
-        subscriber: createOptumSandboxSubscriber(false),
-        dependent: createOptumSandboxSpouse()
-      };
-    }
-  }
-
-  if (relationship === '18') {
-    const patient = previous.dependent;
-    return {
-      ...previous,
-      subscriber: {
-        ...previous.subscriber,
-        ...(patient ? {
-          firstName: patient.firstName,
-          lastName: patient.lastName,
-          middleName: patient.middleName,
-          suffix: patient.suffix,
-          gender: patient.gender,
-          dateOfBirth: patient.dateOfBirth,
-          address: patient.address,
-          contactInformation: patient.contactInformation
-        } : {}),
-        memberId: patient?.memberId || previous.subscriber?.memberId,
-        paymentResponsibilityLevelCode: 'P'
-      },
-      dependent: undefined
-    };
-  }
-
-  const changingFromSelf = !previous.dependent;
-  const currentPatient = previous.dependent || previous.subscriber;
-
-  return {
-    ...previous,
-    subscriber: {
-      ...(changingFromSelf ? {
-        policyNumber: previous.subscriber?.policyNumber,
-        groupNumber: previous.subscriber?.groupNumber,
-        subscriberGroupName: previous.subscriber?.subscriberGroupName
-      } : previous.subscriber),
-      // The sole collected member ID follows the patient into the dependent
-      // object for spouse, child, and other relationship claims.
-      memberId: undefined,
-      paymentResponsibilityLevelCode: 'P'
-    },
-    dependent: {
-      memberId: currentPatient?.memberId,
-      firstName: currentPatient?.firstName || '',
-      lastName: currentPatient?.lastName || '',
-      middleName: currentPatient?.middleName,
-      suffix: currentPatient?.suffix,
-      gender: currentPatient?.gender || 'U',
-      dateOfBirth: currentPatient?.dateOfBirth || '',
-      relationshipToSubscriberCode: relationship,
-      address: currentPatient?.address || {
-        address1: '',
-        city: '',
-        state: '',
-        postalCode: ''
-      },
-      contactInformation: currentPatient?.contactInformation
-    }
-  };
-}
-
-// Exported to cover local-draft migrations for the exclusive patient member ID.
+// Exported to cover local-draft migrations into the prototype's intentionally
+// narrow patient-as-subscriber model.
 // eslint-disable-next-line react-refresh/only-export-components
 export function normalizeSavedFormData(savedData: Partial<ClaimSubmissionRequest>): Partial<ClaimSubmissionRequest> {
   const initial = createInitialFormData();
-  const savedClaimInformation = savedData.claimInformation;
-  const savedSubscriber = savedData.subscriber;
-  const selfDependent = savedData.dependent?.relationshipToSubscriberCode === ('18' as string)
-    ? savedData.dependent
-    : undefined;
-  const savedDependent = selfDependent ? undefined : savedData.dependent;
+  const { dependent: legacyDependentPatient, ...savedWithoutDependent } = savedData as LegacySavedClaimFormData;
+  const savedClaimInformation = savedWithoutDependent.claimInformation;
+  const savedSubscriber = savedWithoutDependent.subscriber;
   const isSavedOptumSandboxFixture = isOptumSandboxFixtureData(savedData);
-  const isSavedSandboxSpouse = isSavedOptumSandboxFixture
-    && savedDependent?.relationshipToSubscriberCode === '01';
-  // Reconcile older drafts into the one-ID invariant without losing the value:
-  // the collected ID belongs to whichever object represents the patient. An
-  // old canned spouse draft receives Jane's published sandbox ID rather than
-  // incorrectly migrating John's prior subscriber ID onto Jane.
-  const patientMemberId = isSavedSandboxSpouse
-    ? OPTUM_SANDBOX_FIXTURE.spouse.memberId
-    : savedDependent
-      ? firstNonBlank(savedDependent.memberId, savedSubscriber?.memberId)
-      : firstNonBlank(savedSubscriber?.memberId, selfDependent?.memberId);
-  const dependent = savedDependent ? {
-    ...savedDependent,
-    memberId: patientMemberId
-  } : undefined;
+  // Older prototypes stored a non-self patient under `dependent`. Production
+  // only collects one patient member ID, so migrate that patient's identity
+  // into `subscriber` and retain policy/group fields from the old subscriber.
+  // Optum's sandbox is different: its canned spouse fixture requires two IDs,
+  // which this narrowed prototype deliberately does not support. Reset those
+  // old sandbox drafts to Optum's valid single-subscriber canned identity.
+  const resetLegacySandboxDependent = isSavedOptumSandboxFixture && Boolean(legacyDependentPatient);
+  const patientMemberId = firstNonBlank(
+    legacyDependentPatient?.memberId,
+    savedSubscriber?.memberId
+  );
+  const normalizedSubscriber: Subscriber = resetLegacySandboxDependent
+    ? createOptumSandboxSubscriber()
+    : {
+        ...savedSubscriber,
+        ...(legacyDependentPatient ? {
+          firstName: legacyDependentPatient.firstName,
+          lastName: legacyDependentPatient.lastName,
+          middleName: legacyDependentPatient.middleName,
+          suffix: legacyDependentPatient.suffix,
+          gender: legacyDependentPatient.gender,
+          dateOfBirth: legacyDependentPatient.dateOfBirth,
+          address: legacyDependentPatient.address,
+          contactInformation: legacyDependentPatient.contactInformation
+        } : {}),
+        memberId: patientMemberId,
+        paymentResponsibilityLevelCode: 'P'
+      };
   const savedPatientControlNumber = savedClaimInformation?.patientControlNumber?.trim() || '';
 
   return {
-    ...savedData,
-    controlNumber: normalizeControlNumber(savedData.controlNumber),
-    tradingPartnerName: savedData.tradingPartnerName || savedData.receiver?.organizationName,
-    subscriber: {
-      ...savedSubscriber,
-      ...(selfDependent ? {
-        firstName: selfDependent.firstName || savedSubscriber?.firstName,
-        lastName: selfDependent.lastName || savedSubscriber?.lastName,
-        middleName: selfDependent.middleName || savedSubscriber?.middleName,
-        gender: selfDependent.gender || savedSubscriber?.gender,
-        dateOfBirth: selfDependent.dateOfBirth || savedSubscriber?.dateOfBirth,
-        address: selfDependent.address || savedSubscriber?.address,
-        contactInformation: selfDependent.contactInformation || savedSubscriber?.contactInformation
-      } : {}),
-      memberId: dependent ? undefined : patientMemberId,
-      paymentResponsibilityLevelCode: 'P'
-    },
-    dependent,
+    ...savedWithoutDependent,
+    controlNumber: normalizeControlNumber(savedWithoutDependent.controlNumber),
+    tradingPartnerName: savedWithoutDependent.tradingPartnerName || savedWithoutDependent.receiver?.organizationName,
+    subscriber: normalizedSubscriber,
     billing: {
-      ...savedData.billing,
+      ...savedWithoutDependent.billing,
       // Preserve Optum's pseudo-provider only for a recognized sandbox fixture.
       // Every other saved draft follows the production Box 32/33 Reperio rules.
       organizationName: isSavedOptumSandboxFixture
-        ? savedData.billing?.organizationName
-        : (savedClaimInformation?.serviceFacilityLocation?.organizationName || savedData.billing?.organizationName),
+        ? savedWithoutDependent.billing?.organizationName
+        : (savedClaimInformation?.serviceFacilityLocation?.organizationName || savedWithoutDependent.billing?.organizationName),
       npi: isSavedOptumSandboxFixture
-        ? savedData.billing?.npi
-        : (savedClaimInformation?.serviceFacilityLocation?.npi || savedData.billing?.npi),
+        ? savedWithoutDependent.billing?.npi
+        : (savedClaimInformation?.serviceFacilityLocation?.npi || savedWithoutDependent.billing?.npi),
       address: isSavedOptumSandboxFixture
-        ? savedData.billing?.address
+        ? savedWithoutDependent.billing?.address
         : { ...REPERIO_BILLING_ADDRESS },
       contactInformation: isSavedOptumSandboxFixture
-        ? savedData.billing?.contactInformation
+        ? savedWithoutDependent.billing?.contactInformation
         : {
-            ...savedData.billing?.contactInformation,
+            ...savedWithoutDependent.billing?.contactInformation,
             name: REPERIO_BILLING_CONTACT_NAME,
             phoneNumber: REPERIO_BILLING_PHONE,
             email: REPERIO_BILLING_EMAIL
@@ -772,8 +656,8 @@ export function normalizeSavedFormData(savedData: Partial<ClaimSubmissionRequest
       ssn: undefined,
       providerType: 'BillingProvider'
     },
-    rendering: savedData.rendering ? {
-      ...savedData.rendering,
+    rendering: savedWithoutDependent.rendering ? {
+      ...savedWithoutDependent.rendering,
       providerType: 'RenderingProvider'
     } : undefined,
     referring: undefined,
@@ -883,29 +767,29 @@ export function buildPrimaryClaimRequest(
   };
 
   const subscriberSource = formData.subscriber;
-  const dependentSource = formData.dependent;
-  // Reperio collects one member ID from the patient. Prefer the relationship-
-  // appropriate root, while accepting the old root as a migration fallback.
-  const patientMemberId = dependentSource
-    ? (firstNonBlank(dependentSource.memberId, subscriberSource?.memberId) || '')
-    : (firstNonBlank(subscriberSource?.memberId) || '');
+  // REPERIO PROTOTYPE CONTRACT: the application collects one payer-recognized
+  // member ID from the patient and never collects a second policyholder ID.
+  // Optum directs uniquely identifiable patients to the subscriber loop, even
+  // when their real-world policy relationship is spouse/child/other. Therefore
+  // this builder always emits the patient as `subscriber` and never emits the
+  // broader API's optional `dependent` object.
+  const patientMemberId = firstNonBlank(subscriberSource?.memberId) || '';
   const subscriberName = [subscriberSource?.firstName, subscriberSource?.lastName].filter(Boolean).join(' ').trim();
   requireValue(patientMemberId, 'Box 1a - Patient member ID');
-  requireValue(subscriberSource?.firstName, "Box 4 - Insured's first name");
-  requireValue(subscriberSource?.lastName, "Box 4 - Insured's last name");
-  requireValue(subscriberSource?.dateOfBirth, "Box 11a - Insured's date of birth");
-  requireValue(subscriberSource?.gender, "Box 11a - Insured's gender");
-  requireValue(subscriberSource?.address?.address1, "Box 7 - Insured's street address");
-  requireValue(subscriberSource?.address?.city, "Box 7 - Insured's city");
-  requireValue(subscriberSource?.address?.state, "Box 7 - Insured's state");
-  requireValue(subscriberSource?.address?.postalCode, "Box 7 - Insured's ZIP code");
+  requireValue(subscriberSource?.firstName, "Box 2 - Patient's first name");
+  requireValue(subscriberSource?.lastName, "Box 2 - Patient's last name");
+  requireValue(subscriberSource?.dateOfBirth, "Box 3 - Patient's date of birth");
+  requireValue(subscriberSource?.gender, "Box 3 - Patient's gender");
+  requireValue(subscriberSource?.address?.address1, "Box 5 - Patient's street address");
+  requireValue(subscriberSource?.address?.city, "Box 5 - Patient's city");
+  requireValue(subscriberSource?.address?.state, "Box 5 - Patient's state");
+  requireValue(subscriberSource?.address?.postalCode, "Box 5 - Patient's ZIP code");
 
   const subscriber: Subscriber = {
     ...subscriberSource,
     paymentResponsibilityLevelCode: 'P',
     subscriberGroupName: undefined,
-    // A dependent claim carries the sole patient ID in Loop 2010CA instead.
-    memberId: dependentSource ? undefined : patientMemberId,
+    memberId: patientMemberId,
     firstName: subscriberSource?.firstName?.trim(),
     lastName: subscriberSource?.lastName?.trim(),
     dateOfBirth: formatDateForAPI(subscriberSource?.dateOfBirth || ''),
@@ -915,33 +799,6 @@ export function buildPrimaryClaimRequest(
       name: subscriberSource.contactInformation.name?.trim() || subscriberName || 'Subscriber'
     } : undefined
   };
-
-  let dependent: Dependent | undefined;
-  if (dependentSource) {
-    requireValue(dependentSource.firstName, "Box 2 - Patient's first name");
-    requireValue(dependentSource.lastName, "Box 2 - Patient's last name");
-    requireValue(dependentSource.dateOfBirth, "Box 3 - Patient's date of birth");
-    requireValue(dependentSource.gender, "Box 3 - Patient's gender");
-    requireValue(dependentSource.relationshipToSubscriberCode, 'Box 6 - Patient relationship');
-    requireValue(dependentSource.address?.address1, "Box 5 - Patient's street address");
-    requireValue(dependentSource.address?.city, "Box 5 - Patient's city");
-    requireValue(dependentSource.address?.state, "Box 5 - Patient's state");
-    requireValue(dependentSource.address?.postalCode, "Box 5 - Patient's ZIP code");
-
-    const dependentName = [dependentSource.firstName, dependentSource.lastName].filter(Boolean).join(' ').trim();
-    dependent = {
-      ...dependentSource,
-      memberId: patientMemberId,
-      firstName: dependentSource.firstName?.trim() || '',
-      lastName: dependentSource.lastName?.trim() || '',
-      dateOfBirth: formatDateForAPI(dependentSource.dateOfBirth),
-      address: normalizeAddressForEnvironment(dependentSource.address, isOptumSandbox),
-      contactInformation: dependentSource.contactInformation ? {
-        ...dependentSource.contactInformation,
-        name: dependentSource.contactInformation.name?.trim() || dependentName || 'Patient'
-      } : undefined
-    };
-  }
 
   const facilitySource = formData.claimInformation?.serviceFacilityLocation;
   requireValue(facilitySource?.organizationName, 'Box 32 - Service facility name');
@@ -1192,7 +1049,6 @@ export function buildPrimaryClaimRequest(
     submitter,
     receiver: { organizationName: payerName },
     subscriber,
-    ...(dependent ? { dependent } : {}),
     billing,
     ...(rendering ? { rendering } : {}),
     claimInformation: {
@@ -1256,8 +1112,6 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [lastRequest, setLastRequest] = useState<ClaimSubmissionRequest | null>(null);
   const [actionType, setActionType] = useState<'validate' | 'submit' | null>(null);
-
-  const patientIsSubscriber = !formData.dependent;
 
   // Provider state
   const [selectedProviderOption, setSelectedProviderOption] = useState<string>(() => {
@@ -1426,10 +1280,6 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
       next[index] = updater(current[index]);
       return next;
     });
-  };
-
-  const setPatientRelationship = (relationship: PatientRelationship) => {
-    setFormData((previous) => applyPatientRelationship(previous, relationship, environment));
   };
 
   const addServiceLine = () => {
@@ -1724,8 +1574,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
     setActionType(null);
   };
 
-  const patient = patientIsSubscriber ? formData.subscriber : formData.dependent;
-  const patientFieldRoot = patientIsSubscriber ? 'subscriber' : 'dependent';
+  const patient = formData.subscriber;
   const requiredDiagnosisIndexes = new Set<number>([0, 1, 2, 3, 4]);
   effectiveServiceLines.forEach((line) => {
     line.professionalService?.compositeDiagnosisCodePointers?.diagnosisCodePointers.forEach((pointer) => {
@@ -1936,12 +1785,12 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
             <input
               type="text"
               value={patient?.memberId || ''}
-              onChange={(e) => updateField([patientFieldRoot, 'memberId'], e.target.value)}
+              onChange={(e) => updateField(['subscriber', 'memberId'], e.target.value)}
               maxLength={29}
               className={`w-full p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
             />
             <p className="mt-1 text-xs text-gray-500">
-              Patient-provided member ID; submitted as <code>subscriber.memberId</code> for Self and <code>dependent.memberId</code> for Spouse, Child, or Other.
+              Patient-provided member ID; always submitted as <code>subscriber.memberId</code> in this one-patient-ID workflow.
             </p>
           </div>
 
@@ -1952,21 +1801,21 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               <input
                 type="text"
                 value={patient?.lastName ?? ''}
-                onChange={(e) => updateField([patientFieldRoot, 'lastName'], e.target.value)}
+                onChange={(e) => updateField(['subscriber', 'lastName'], e.target.value)}
                 placeholder="Last Name"
                 className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
               />
               <input
                 type="text"
                 value={patient?.firstName ?? ''}
-                onChange={(e) => updateField([patientFieldRoot, 'firstName'], e.target.value)}
+                onChange={(e) => updateField(['subscriber', 'firstName'], e.target.value)}
                 placeholder="First Name"
                 className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
               />
               <input
                 type="text"
                 value={patient?.middleName ?? ''}
-                onChange={(e) => updateField([patientFieldRoot, 'middleName'], e.target.value)}
+                onChange={(e) => updateField(['subscriber', 'middleName'], e.target.value)}
                 placeholder="MI"
                 maxLength={1}
                 className={`p-2 border rounded ${OPTIONAL_FIELD_CLASS}`}
@@ -1974,7 +1823,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               <input
                 type="text"
                 value={patient?.suffix ?? ''}
-                onChange={(e) => updateField([patientFieldRoot, 'suffix'], e.target.value)}
+                onChange={(e) => updateField(['subscriber', 'suffix'], e.target.value)}
                 placeholder="Suffix"
                 className={`p-2 border rounded ${OPTIONAL_FIELD_CLASS}`}
               />
@@ -1988,7 +1837,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               <input
                 type="date"
                 value={patient?.dateOfBirth ? formatDateForInput(patient.dateOfBirth) : ''}
-                onChange={(e) => updateField([patientFieldRoot, 'dateOfBirth'], e.target.value)}
+                onChange={(e) => updateField(['subscriber', 'dateOfBirth'], e.target.value)}
                 className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
               />
               <div className="flex items-center gap-4">
@@ -1997,7 +1846,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   <input
                     type="checkbox"
                     checked={patient?.gender === 'M'}
-                    onChange={() => updateField([patientFieldRoot, 'gender'], 'M')}
+                    onChange={() => updateField(['subscriber', 'gender'], 'M')}
                     className={`w-4 h-4 ${REQUIRED_FIELD_CLASS}`}
                   />
                   <span className="text-sm">M</span>
@@ -2006,7 +1855,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   <input
                     type="checkbox"
                     checked={patient?.gender === 'F'}
-                    onChange={() => updateField([patientFieldRoot, 'gender'], 'F')}
+                    onChange={() => updateField(['subscriber', 'gender'], 'F')}
                     className={`w-4 h-4 ${REQUIRED_FIELD_CLASS}`}
                   />
                   <span className="text-sm">F</span>
@@ -2017,37 +1866,9 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
 
           {/* Box 4 */}
           <div className="pb-3">
-            <label className={`text-sm font-bold mb-2 block ${REQUIRED_LABEL_CLASS}`}>4. INSURED'S NAME (Last Name, First Name, Middle Initial, Suffix)</label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <input
-                type="text"
-                value={formData.subscriber?.lastName ?? ''}
-                onChange={(e) => updateField(['subscriber', 'lastName'], e.target.value)}
-                placeholder="Last Name"
-                className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
-              />
-              <input
-                type="text"
-                value={formData.subscriber?.firstName ?? ''}
-                onChange={(e) => updateField(['subscriber', 'firstName'], e.target.value)}
-                placeholder="First Name"
-                className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
-              />
-              <input
-                type="text"
-                value={formData.subscriber?.middleName ?? ''}
-                onChange={(e) => updateField(['subscriber', 'middleName'], e.target.value)}
-                placeholder="MI"
-                maxLength={1}
-                className={`p-2 border rounded ${OPTIONAL_FIELD_CLASS}`}
-              />
-              <input
-                type="text"
-                value={formData.subscriber?.suffix ?? ''}
-                onChange={(e) => updateField(['subscriber', 'suffix'], e.target.value)}
-                placeholder="Suffix"
-                className={`p-2 border rounded ${OPTIONAL_FIELD_CLASS}`}
-              />
+            <label className={`text-sm font-bold mb-2 block ${OPTIONAL_LABEL_CLASS}`}>4. INSURED'S NAME</label>
+            <div className="p-3 border border-gray-300 rounded bg-gray-50 text-sm text-gray-600">
+              Same as Box 2. The patient is submitted as the subscriber, so no second policyholder name is collected.
             </div>
           </div>
 
@@ -2058,132 +1879,13 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               <input
                 type="text"
                 value={patient?.address?.address1 ?? ''}
-                onChange={(e) => updateField([patientFieldRoot, 'address', 'address1'], e.target.value)}
-                placeholder="Address Line 1"
-                className={`w-full p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
-              />
-              <input
-                type="text"
-                value={patient?.address?.address2 ?? ''}
-                onChange={(e) => updateField([patientFieldRoot, 'address', 'address2'], e.target.value)}
-                placeholder="Address Line 2"
-                className={`w-full p-2 border rounded ${OPTIONAL_FIELD_CLASS}`}
-              />
-              <div className="grid grid-cols-3 gap-4">
-                <input
-                  type="text"
-                  value={patient?.address?.city ?? ''}
-                  onChange={(e) => updateField([patientFieldRoot, 'address', 'city'], e.target.value)}
-                  placeholder="City"
-                  className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
-                />
-                <select
-                  value={patient?.address?.state ?? ''}
-                  onChange={(e) => updateField([patientFieldRoot, 'address', 'state'], e.target.value)}
-                  className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
-                >
-                  <option value="">State</option>
-                  {US_STATES.map(state => (
-                    <option
-                      key={state.code}
-                      value={isOptumSandbox ? state.code.toLowerCase() : state.code}
-                    >
-                      {state.code} - {state.name}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  value={patient?.address?.postalCode ?? ''}
-                  onChange={(e) => updateField([patientFieldRoot, 'address', 'postalCode'], e.target.value.replace(/\D/g, '').slice(0, 9))}
-                  placeholder="ZIP Code"
-                  className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
-                />
-              </div>
-              <input
-                type="tel"
-                value={patient?.contactInformation?.phoneNumber ? formatPhoneNumber(patient.contactInformation.phoneNumber) : ''}
-                onChange={(e) => {
-                  const digits = e.target.value.replace(/\D/g, '');
-                  updateField([patientFieldRoot, 'contactInformation', 'name'], patient?.contactInformation?.name || [patient?.firstName, patient?.lastName].filter(Boolean).join(' '));
-                  updateField([patientFieldRoot, 'contactInformation', 'phoneNumber'], digits);
-                }}
-                placeholder="Telephone"
-                className={`w-full p-2 border rounded ${OPTIONAL_FIELD_CLASS}`}
-              />
-            </div>
-          </div>
-
-          {/* Box 6 */}
-          <div className="pb-3">
-            <label className={`text-sm font-bold mb-2 block ${REQUIRED_LABEL_CLASS}`}>6. PATIENT RELATIONSHIP TO INSURED</label>
-            <div className="flex flex-wrap gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={patientIsSubscriber}
-                  onChange={(e) => e.target.checked && setPatientRelationship('18')}
-                  className={`w-4 h-4 ${REQUIRED_FIELD_CLASS}`}
-                />
-                <span className="text-sm">Self</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.dependent?.relationshipToSubscriberCode === '01'}
-                  onChange={(e) => e.target.checked && setPatientRelationship('01')}
-                  className={`w-4 h-4 ${REQUIRED_FIELD_CLASS}`}
-                />
-                <span className="text-sm">Spouse</span>
-              </label>
-              <label
-                className={`flex items-center gap-2 ${isOptumSandbox ? 'cursor-not-allowed text-gray-400' : 'cursor-pointer'}`}
-                title={isOptumSandbox ? "Optum's published canned claim uses the spouse relationship" : undefined}
-              >
-                <input
-                  type="checkbox"
-                  checked={formData.dependent?.relationshipToSubscriberCode === '19'}
-                  onChange={(e) => e.target.checked && setPatientRelationship('19')}
-                  disabled={isOptumSandbox}
-                  className={`w-4 h-4 ${REQUIRED_FIELD_CLASS}`}
-                />
-                <span className="text-sm">Child</span>
-              </label>
-              <label
-                className={`flex items-center gap-2 ${isOptumSandbox ? 'cursor-not-allowed text-gray-400' : 'cursor-pointer'}`}
-                title={isOptumSandbox ? "Optum's published canned claim uses the spouse relationship" : undefined}
-              >
-                <input
-                  type="checkbox"
-                  checked={formData.dependent?.relationshipToSubscriberCode === 'G8'}
-                  onChange={(e) => e.target.checked && setPatientRelationship('G8')}
-                  disabled={isOptumSandbox}
-                  className={`w-4 h-4 ${REQUIRED_FIELD_CLASS}`}
-                />
-                <span className="text-sm">Other</span>
-              </label>
-            </div>
-            {isOptumSandbox && (
-              <p className="mt-2 text-xs text-gray-500">
-                Sandbox testing uses Optum&apos;s published Self/Spouse canned identities; Child and Other remain available in production.
-              </p>
-            )}
-          </div>
-
-          {/* Box 7 */}
-          <div className="pb-3">
-            <label className={`text-sm font-bold mb-2 block ${REQUIRED_LABEL_CLASS}`}>7. INSURED'S ADDRESS</label>
-            <div className="space-y-2">
-              <input
-                type="text"
-                value={formData.subscriber?.address?.address1 || ''}
                 onChange={(e) => updateField(['subscriber', 'address', 'address1'], e.target.value)}
                 placeholder="Address Line 1"
                 className={`w-full p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
               />
               <input
                 type="text"
-                value={formData.subscriber?.address?.address2 || ''}
+                value={patient?.address?.address2 ?? ''}
                 onChange={(e) => updateField(['subscriber', 'address', 'address2'], e.target.value)}
                 placeholder="Address Line 2"
                 className={`w-full p-2 border rounded ${OPTIONAL_FIELD_CLASS}`}
@@ -2191,13 +1893,13 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               <div className="grid grid-cols-3 gap-4">
                 <input
                   type="text"
-                  value={formData.subscriber?.address?.city || ''}
+                  value={patient?.address?.city ?? ''}
                   onChange={(e) => updateField(['subscriber', 'address', 'city'], e.target.value)}
                   placeholder="City"
                   className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
                 />
                 <select
-                  value={formData.subscriber?.address?.state || ''}
+                  value={patient?.address?.state ?? ''}
                   onChange={(e) => updateField(['subscriber', 'address', 'state'], e.target.value)}
                   className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
                 >
@@ -2213,26 +1915,39 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 </select>
                 <input
                   type="text"
-                  value={formData.subscriber?.address?.postalCode || ''}
-                  onChange={(e) => updateField(['subscriber', 'address', 'postalCode'], e.target.value)}
+                  value={patient?.address?.postalCode ?? ''}
+                  onChange={(e) => updateField(['subscriber', 'address', 'postalCode'], e.target.value.replace(/\D/g, '').slice(0, 9))}
                   placeholder="ZIP Code"
                   className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
                 />
               </div>
               <input
                 type="tel"
-                value={formData.subscriber?.contactInformation?.phoneNumber ? formatPhoneNumber(formData.subscriber.contactInformation.phoneNumber) : ''}
+                value={patient?.contactInformation?.phoneNumber ? formatPhoneNumber(patient.contactInformation.phoneNumber) : ''}
                 onChange={(e) => {
-                  if (!formData.subscriber?.contactInformation) {
-                    updateField(['subscriber', 'contactInformation'], {});
-                  }
-                  // Store unformatted digits only
                   const digits = e.target.value.replace(/\D/g, '');
+                  updateField(['subscriber', 'contactInformation', 'name'], patient?.contactInformation?.name || [patient?.firstName, patient?.lastName].filter(Boolean).join(' '));
                   updateField(['subscriber', 'contactInformation', 'phoneNumber'], digits);
                 }}
                 placeholder="Telephone"
                 className={`w-full p-2 border rounded ${OPTIONAL_FIELD_CLASS}`}
               />
+            </div>
+          </div>
+
+          {/* Box 6 */}
+          <div className="pb-3">
+            <label className={`text-sm font-bold mb-2 block ${OPTIONAL_LABEL_CLASS}`}>6. PATIENT RELATIONSHIP TO INSURED</label>
+            <div className="p-3 border border-gray-300 rounded bg-gray-50 text-sm text-gray-600">
+              Not separately collected. A patient with a payer-recognized member ID is submitted as the subscriber for claim purposes.
+            </div>
+          </div>
+
+          {/* Box 7 */}
+          <div className="pb-3">
+            <label className={`text-sm font-bold mb-2 block ${OPTIONAL_LABEL_CLASS}`}>7. INSURED'S ADDRESS</label>
+            <div className="p-3 border border-gray-300 rounded bg-gray-50 text-sm text-gray-600">
+              Same as Box 5. The patient address is submitted as the subscriber address.
             </div>
           </div>
 
@@ -2338,35 +2053,9 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
 
           {/* Box 11a */}
           <div className="pb-3">
-            <label className={`text-sm font-bold mb-2 block ${REQUIRED_LABEL_CLASS}`}>11a. INSURED'S DATE OF BIRTH</label>
-            <div className="flex items-center gap-4">
-              <input
-                type="date"
-                value={formData.subscriber?.dateOfBirth ? formatDateForInput(formData.subscriber.dateOfBirth) : ''}
-                onChange={(e) => updateField(['subscriber', 'dateOfBirth'], e.target.value)}
-                className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
-              />
-              <div className="flex items-center gap-4">
-                <span className={`text-sm font-bold ${REQUIRED_LABEL_CLASS}`}>SEX</span>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.subscriber?.gender === 'M'}
-                    onChange={() => updateField(['subscriber', 'gender'], 'M')}
-                    className={`w-4 h-4 ${REQUIRED_FIELD_CLASS}`}
-                  />
-                  <span className="text-sm">M</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.subscriber?.gender === 'F'}
-                    onChange={() => updateField(['subscriber', 'gender'], 'F')}
-                    className={`w-4 h-4 ${REQUIRED_FIELD_CLASS}`}
-                  />
-                  <span className="text-sm">F</span>
-                </label>
-              </div>
+            <label className={`text-sm font-bold mb-2 block ${OPTIONAL_LABEL_CLASS}`}>11a. INSURED'S DATE OF BIRTH / SEX</label>
+            <div className="p-3 border border-gray-300 rounded bg-gray-50 text-sm text-gray-600">
+              Same as Box 3. The patient&apos;s date of birth and sex are submitted with the subscriber record.
             </div>
           </div>
 

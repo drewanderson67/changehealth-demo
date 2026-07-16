@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ClaimSubmissionRequest, Dependent } from '../types/claims';
+import type { ClaimSubmissionRequest } from '../types/claims';
 import {
-  applyPatientRelationship,
   buildPrimaryClaimRequest,
   normalizeSavedFormData
 } from './ClaimForm';
@@ -12,6 +11,27 @@ const buildOptions = {
   patientSignatureOnFile: true,
   authorizedSignatureOnFile: true,
   physicianSignatureDate: '2026-07-15'
+};
+
+type LegacyDependentDraft = {
+  memberId?: string;
+  firstName: string;
+  lastName: string;
+  middleName?: string;
+  suffix?: string;
+  gender: 'M' | 'F' | 'U';
+  dateOfBirth: string;
+  relationshipToSubscriberCode: '01' | '19' | 'G8';
+  address: {
+    address1: string;
+    city: string;
+    state: string;
+    postalCode: string;
+  };
+};
+
+type LegacySavedClaim = ClaimSubmissionRequest & {
+  dependent: LegacyDependentDraft;
 };
 
 function createValidSandboxClaim(): ClaimSubmissionRequest {
@@ -38,6 +58,8 @@ function createValidSandboxClaim(): ClaimSubmissionRequest {
       lastName: 'doeOne',
       gender: 'M',
       dateOfBirth: '19800102',
+      policyNumber: '00001',
+      groupNumber: '0000000001',
       address: {
         address1: '123 address1',
         city: 'city1',
@@ -115,37 +137,39 @@ function createValidSandboxClaim(): ClaimSubmissionRequest {
   };
 }
 
-function createDependent(
-  relationshipToSubscriberCode: Dependent['relationshipToSubscriberCode'] = '01',
-  memberId = 'DEPENDENT-PATIENT-ID'
-): Dependent {
+function createLegacyDependent(
+  memberId = 'DEPENDENT-PATIENT-ID',
+  relationshipToSubscriberCode: LegacyDependentDraft['relationshipToSubscriberCode'] = '01'
+): LegacyDependentDraft {
   return {
-    firstName: 'janethree',
-    lastName: 'doethree',
+    firstName: 'janeone',
+    lastName: 'doeOne',
     gender: 'F',
     dateOfBirth: '19850505',
     relationshipToSubscriberCode,
     memberId,
     address: {
-      address1: '123 address1',
-      city: 'city1',
-      state: 'wa',
-      postalCode: '981010000'
+      address1: '456 patient address',
+      city: 'patientcity',
+      state: 'or',
+      postalCode: '972020000'
     }
   };
 }
 
-function expectOnlyPatientMemberId(
-  claim: Pick<Partial<ClaimSubmissionRequest>, 'subscriber' | 'dependent'>,
-  expectedRoot: 'subscriber' | 'dependent',
+function withLegacyDependent(
+  claim: ClaimSubmissionRequest,
+  dependent: LegacyDependentDraft
+): LegacySavedClaim {
+  return { ...claim, dependent };
+}
+
+function expectSubscriberOnlyMemberId(
+  claim: Partial<ClaimSubmissionRequest>,
   expectedMemberId: string
 ) {
-  expect(claim.subscriber?.memberId).toBe(
-    expectedRoot === 'subscriber' ? expectedMemberId : undefined
-  );
-  expect(claim.dependent?.memberId).toBe(
-    expectedRoot === 'dependent' ? expectedMemberId : undefined
-  );
+  expect(claim.subscriber?.memberId).toBe(expectedMemberId);
+  expect(claim).not.toHaveProperty('dependent');
   expect((JSON.stringify(claim).match(/"memberId"/g) || [])).toHaveLength(1);
 }
 
@@ -160,57 +184,47 @@ describe('buildPrimaryClaimRequest', () => {
     expect(request.claimInformation.claimChargeAmount).toBe('200.00');
   });
 
-  it('serializes the sole patient member ID on the subscriber for Self', () => {
-    const formData = createValidSandboxClaim();
+  it('always serializes the sole patient member ID on subscriber', () => {
+    const request = buildPrimaryClaimRequest(createValidSandboxClaim(), buildOptions);
 
-    const request = buildPrimaryClaimRequest(formData, buildOptions);
-
-    expectOnlyPatientMemberId(request, 'subscriber', '0000000001');
+    expectSubscriberOnlyMemberId(request, '0000000001');
   });
 
-  it.each(['01', '19', 'G8'] as const)(
-    'serializes the sole patient member ID on the dependent for relationship %s',
-    (relationship) => {
-      const formData = createValidSandboxClaim();
-      formData.subscriber.memberId = 'LEGACY-WRONG-ROOT-ID';
-      formData.dependent = createDependent(relationship, 'DEPENDENT-PATIENT-ID');
+  it('never forwards a legacy dependent property', () => {
+    const legacyFormData = withLegacyDependent(
+      createValidSandboxClaim(),
+      createLegacyDependent()
+    );
 
-      const request = buildPrimaryClaimRequest(formData, buildOptions);
+    const request = buildPrimaryClaimRequest(legacyFormData, buildOptions);
 
-      expectOnlyPatientMemberId(request, 'dependent', 'DEPENDENT-PATIENT-ID');
-    }
-  );
+    expectSubscriberOnlyMemberId(request, '0000000001');
+  });
 
-  it('recovers a legacy subscriber-root ID when the dependent ID is blank', () => {
+  it('requires the patient member ID on subscriber', () => {
     const formData = createValidSandboxClaim();
-    formData.dependent = createDependent('01', '   ');
+    formData.subscriber.memberId = '   ';
 
-    const request = buildPrimaryClaimRequest(formData, buildOptions);
-
-    expectOnlyPatientMemberId(request, 'dependent', '0000000001');
+    expect(() => buildPrimaryClaimRequest(formData, buildOptions)).toThrow('Box 1a - Patient member ID');
   });
 
   it('normalizes address states for Optum canned sandbox requests', () => {
     const formData = createValidSandboxClaim();
     formData.subscriber.address!.state = 'WA';
-    formData.dependent = createDependent();
-    formData.dependent.address!.state = 'WA';
     formData.billing.address!.state = 'TN';
     formData.claimInformation.serviceFacilityLocation!.address.state = 'TN';
 
     const request = buildPrimaryClaimRequest(formData, buildOptions);
 
     expect(request.subscriber.address?.state).toBe('wa');
-    expect(request.dependent?.address?.state).toBe('wa');
     expect(request.billing.address?.state).toBe('tn');
     expect(request.claimInformation.serviceFacilityLocation?.address.state).toBe('tn');
+    expect(request).not.toHaveProperty('dependent');
   });
 
   it('keeps standard uppercase address states in production requests', () => {
     const formData = createValidSandboxClaim();
     formData.subscriber.address!.state = 'wa';
-    formData.dependent = createDependent();
-    formData.dependent.address!.state = 'wa';
     formData.claimInformation.serviceFacilityLocation!.address.state = 'or';
     formData.claimInformation.patientControlNumber = 'RC-123456789012';
     formData.claimInformation.serviceLines[0].renderingProvider = {
@@ -226,102 +240,61 @@ describe('buildPrimaryClaimRequest', () => {
     });
 
     expect(request.subscriber.address?.state).toBe('WA');
-    expect(request.dependent?.address?.state).toBe('WA');
     expect(request.claimInformation.serviceFacilityLocation?.address.state).toBe('OR');
     expect(request.billing.address?.state).toBe('OR');
-  });
-});
-
-describe('applyPatientRelationship', () => {
-  it('loads the Optum canned spouse and puts the sole ID on Jane', () => {
-    const formData = createValidSandboxClaim();
-
-    const spouseClaim = applyPatientRelationship(formData, '01', 'sandbox');
-
-    expectOnlyPatientMemberId(spouseClaim, 'dependent', '0000000002');
-    expect(spouseClaim.subscriber?.firstName).toBe('johnone');
-    expect(spouseClaim.subscriber?.address?.state).toBe('wa');
-    expect(spouseClaim.dependent).toMatchObject({
-      firstName: 'janeone',
-      lastName: 'doeOne',
-      gender: 'F',
-      dateOfBirth: '19800102',
-      relationshipToSubscriberCode: '01',
-      address: { state: 'wa' }
-    });
-  });
-
-  it.each(['01', '19', 'G8'] as const)(
-    'moves the sole patient ID to the production dependent for relationship %s',
-    (relationship) => {
-      const formData = createValidSandboxClaim();
-
-      const dependentClaim = applyPatientRelationship(formData, relationship, 'production');
-
-      expectOnlyPatientMemberId(dependentClaim, 'dependent', '0000000001');
-      expect(dependentClaim.dependent?.firstName).toBe('johnone');
-      expect(dependentClaim.subscriber?.firstName).toBeUndefined();
-      expect(dependentClaim.dependent?.relationshipToSubscriberCode).toBe(relationship);
-    }
-  );
-
-  it('moves the patient ID back to subscriber when returning to Self', () => {
-    const dependentClaim = applyPatientRelationship(
-      createValidSandboxClaim(),
-      '01',
-      'production'
-    );
-
-    const selfClaim = applyPatientRelationship(dependentClaim, '18', 'production');
-
-    expectOnlyPatientMemberId(selfClaim, 'subscriber', '0000000001');
-    expect(selfClaim.dependent).toBeUndefined();
-    expect(selfClaim.subscriber?.firstName).toBe('johnone');
-  });
-
-  it('preserves the patient ID when changing between dependent relationships', () => {
-    const spouseClaim = applyPatientRelationship(
-      createValidSandboxClaim(),
-      '01',
-      'production'
-    );
-
-    const otherClaim = applyPatientRelationship(spouseClaim, 'G8', 'production');
-
-    expectOnlyPatientMemberId(otherClaim, 'dependent', '0000000001');
-    expect(otherClaim.dependent?.relationshipToSubscriberCode).toBe('G8');
+    expect(request).not.toHaveProperty('dependent');
   });
 });
 
 describe('normalizeSavedFormData', () => {
-  it('moves a legacy subscriber-root ID to the dependent patient', () => {
+  it('promotes a legacy production dependent patient into subscriber', () => {
     const saved = createValidSandboxClaim();
     saved.tradingPartnerServiceId = '87726';
     saved.claimInformation.patientControlNumber = 'RC-123456789012';
-    saved.dependent = createDependent('01', '   ');
+    const legacySaved = withLegacyDependent(saved, createLegacyDependent());
 
-    const normalized = normalizeSavedFormData(saved);
+    const normalized = normalizeSavedFormData(legacySaved);
 
-    expectOnlyPatientMemberId(normalized, 'dependent', '0000000001');
+    expectSubscriberOnlyMemberId(normalized, 'DEPENDENT-PATIENT-ID');
+    expect(normalized.subscriber).toMatchObject({
+      firstName: 'janeone',
+      lastName: 'doeOne',
+      dateOfBirth: '19850505',
+      groupNumber: '0000000001',
+      policyNumber: '00001',
+      address: {
+        address1: '456 patient address',
+        city: 'patientcity',
+        state: 'or'
+      }
+    });
   });
 
-  it('prefers the dependent patient ID when an old draft contains both', () => {
+  it('recovers a sole member ID stored on the old subscriber root', () => {
     const saved = createValidSandboxClaim();
     saved.tradingPartnerServiceId = '87726';
     saved.claimInformation.patientControlNumber = 'RC-123456789012';
-    saved.dependent = createDependent('19', 'DEPENDENT-PATIENT-ID');
+    const legacySaved = withLegacyDependent(saved, createLegacyDependent('   ', '19'));
 
-    const normalized = normalizeSavedFormData(saved);
+    const normalized = normalizeSavedFormData(legacySaved);
 
-    expectOnlyPatientMemberId(normalized, 'dependent', 'DEPENDENT-PATIENT-ID');
+    expectSubscriberOnlyMemberId(normalized, '0000000001');
+    expect(normalized.subscriber?.firstName).toBe('janeone');
   });
 
-  it('upgrades an old canned spouse draft to Jane\'s sandbox member ID', () => {
-    const saved = createValidSandboxClaim();
-    saved.dependent = createDependent('01', '');
+  it('resets an old canned spouse draft to Optum\'s supported subscriber fixture', () => {
+    const legacySaved = withLegacyDependent(
+      createValidSandboxClaim(),
+      createLegacyDependent('0000000002')
+    );
 
-    const normalized = normalizeSavedFormData(saved);
+    const normalized = normalizeSavedFormData(legacySaved);
 
-    expectOnlyPatientMemberId(normalized, 'dependent', '0000000002');
+    expectSubscriberOnlyMemberId(normalized, '0000000001');
+    expect(normalized.subscriber).toMatchObject({
+      firstName: 'johnone',
+      lastName: 'doeOne',
+      address: { state: 'wa' }
+    });
   });
 });

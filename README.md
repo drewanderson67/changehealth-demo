@@ -224,12 +224,12 @@ The claim form follows CMS-1500 box order while intentionally supporting only ne
 
 #### Patient & Insured Information (Boxes 1-11)
 - **Box 1**: Commercial insurance (`CI`) only
-- **Box 1a**: The one member ID collected from the patient. It is sent as `subscriber.memberId` for Self and `dependent.memberId` for Spouse, Child, or Other; the request never sends both.
+- **Box 1a**: The one payer-recognized member ID collected from the patient. It is always sent as `subscriber.memberId`.
 - **Boxes 2-5**: Patient demographics and address
-- **Box 6**: Patient relationship to insured (Self, Spouse, Child, Other)
-- **Boxes 4, 7**: Insured's name and address (auto-fills if relationship is "Self")
+- **Box 6**: Informational only. This limited workflow does not collect a separate policyholder relationship because the uniquely identifiable patient is represented as the subscriber for claim purposes.
+- **Boxes 4, 7**: Mirror the patient name and address from Boxes 2 and 5 without duplicate inputs.
 - **Boxes 9-9d**: Visible but disabled because secondary coverage is unsupported
-- **Boxes 11-11d**: Primary subscriber details; 11b/11c are not applicable and 11d is always No
+- **Boxes 11-11d**: Group number remains editable; 11a mirrors Box 3, 11b/11c are not applicable, and 11d is always No
 
 #### Signatures & Dates (Boxes 12-13)
 - **Box 12**: Patient signature on file (checkbox)
@@ -284,7 +284,7 @@ Add up to 50 service lines with:
 - Box 29: `$0.00`
 
 ✅ **Smart Fields**:
-- If "Self" selected in Box 6, patient info auto-fills insured fields (Boxes 4, 7)
+- Patient data is entered once and used for both the CMS patient fields and the outgoing Optum subscriber record
 - Auto-format phone numbers (XXX-XXX-XXXX)
 - Auto-format currency fields (right-to-left with decimals)
 - State dropdowns for all address fields

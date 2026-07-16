@@ -49,7 +49,8 @@ export interface Provider {
 
 export interface Subscriber {
   paymentResponsibilityLevelCode: 'P';
-  // Reperio's sole collected patient member ID; populated only for Self.
+  // Reperio's sole collected patient member ID. The limited claim workflow
+  // always represents that uniquely identifiable patient as the subscriber.
   memberId?: string;
   ssn?: string;
   firstName?: string;
@@ -62,21 +63,6 @@ export interface Subscriber {
   policyNumber?: string;
   groupNumber?: string;
   subscriberGroupName?: string;
-  address?: Address;
-  contactInformation?: ContactInformation;
-}
-
-export interface Dependent {
-  firstName: string;
-  lastName: string;
-  middleName?: string;
-  suffix?: string;
-  gender: 'M' | 'F' | 'U';
-  dateOfBirth: string;
-  relationshipToSubscriberCode: '01' | '19' | '20' | '39' | '40' | '53' | 'G8';
-  ssn?: string;
-  // Reperio's sole collected patient member ID; populated for non-Self claims.
-  memberId?: string;
   address?: Address;
   contactInformation?: ContactInformation;
 }
@@ -198,7 +184,6 @@ export interface ClaimSubmissionRequest {
   submitter: Submitter;
   receiver: Receiver;
   subscriber: Subscriber;
-  dependent?: Dependent;
   billing: Provider;
   rendering?: Provider;
   referring?: Provider;
