@@ -12,19 +12,32 @@ export interface Address {
 }
 
 export interface ContactInformation {
-  name?: string;
+  name: string;
   phoneNumber?: string;
   faxNumber?: string;
   email?: string;
   phoneExtension?: string;
 }
 
+export type ProviderType =
+  | 'BillingProvider'
+  | 'RenderingProvider'
+  | 'ReferringProvider'
+  | 'OrderingProvider'
+  | 'SupervisingProvider';
+
 export interface Provider {
-  providerType: string;
+  providerType: ProviderType;
   npi?: string;
   ssn?: string;
   employerId?: string;
   taxIdType?: 'SSN' | 'EIN';
+  commercialNumber?: string;
+  locationNumber?: string;
+  claimOfficeNumber?: string;
+  stateLicenseNumber?: string;
+  providerUpinNumber?: string;
+  taxonomyCode?: string;
   firstName?: string;
   lastName?: string;
   middleName?: string;
@@ -35,7 +48,9 @@ export interface Provider {
 }
 
 export interface Subscriber {
-  paymentResponsibilityLevelCode: string;
+  paymentResponsibilityLevelCode: 'P';
+  // Reperio's sole collected patient member ID. The limited claim workflow
+  // always represents that uniquely identifiable patient as the subscriber.
   memberId?: string;
   ssn?: string;
   firstName?: string;
@@ -47,20 +62,7 @@ export interface Subscriber {
   organizationName?: string;
   policyNumber?: string;
   groupNumber?: string;
-  address?: Address;
-  contactInformation?: ContactInformation;
-}
-
-export interface Dependent {
-  firstName: string;
-  lastName: string;
-  middleName?: string;
-  suffix?: string;
-  gender: 'M' | 'F' | 'U';
-  dateOfBirth: string;
-  relationshipToSubscriberCode: string;
-  ssn?: string;
-  memberId?: string;
+  subscriberGroupName?: string;
   address?: Address;
   contactInformation?: ContactInformation;
 }
@@ -79,15 +81,24 @@ export interface ProfessionalService {
   measurementUnit: string;
   serviceUnitCount: string;
   placeOfServiceCode?: string;
+  emergencyIndicator?: 'Y';
+  epsdtIndicator?: 'Y';
+  familyPlanningIndicator?: 'Y';
   compositeDiagnosisCodePointers: {
     diagnosisCodePointers: string[];
   };
+}
+
+export interface ServiceLineReferenceInformation {
+  clinicalLaboratoryImprovementAmendmentNumber?: string;
 }
 
 export interface ServiceLine {
   serviceDate: string;
   serviceDateEnd?: string;
   professionalService: ProfessionalService;
+  serviceLineReferenceInformation?: ServiceLineReferenceInformation;
+  renderingProvider?: Provider;
 }
 
 export interface ClaimSupplementalInformation {
@@ -97,6 +108,32 @@ export interface ClaimSupplementalInformation {
   claimNumber?: string;
 }
 
+export interface ClaimDateInformation {
+  symptomDate?: string;
+  initialTreatmentDate?: string;
+  disabilityBeginDate?: string;
+  disabilityEndDate?: string;
+  admissionDate?: string;
+  dischargeDate?: string;
+}
+
+export interface ClaimNote {
+  additionalInformation?: string;
+  certificationNarrative?: string;
+  goalRehabOrDischargePlans?: string;
+  diagnosisDescription?: string;
+  thirdPartOrgNotes?: string;
+}
+
+export interface ServiceFacilityLocation {
+  organizationName: string;
+  address: Address;
+  npi?: string;
+  phoneName?: string;
+  phoneNumber?: string;
+  phoneExtension?: string;
+}
+
 export interface ClaimInformation {
   claimFilingCode: string;
   patientControlNumber: string;
@@ -104,18 +141,23 @@ export interface ClaimInformation {
   placeOfServiceCode: string;
   claimFrequencyCode: string;
   signatureIndicator: 'Y' | 'N';
-  planParticipationCode?: 'A' | 'B' | 'C' | '';
+  planParticipationCode: 'A' | 'B' | 'C';
   benefitsAssignmentCertificationIndicator: 'Y' | 'N' | 'W';
   releaseInformationCode: 'Y' | 'I';
   healthCareCodeInformation: HealthCareInformation[];
   serviceLines: ServiceLine[];
   patientAmountPaid?: string;
+  // These properties remain in the general/legacy OpenAPI model, but the
+  // limited primary-commercial telehealth workflow intentionally excludes
+  // conditional claim data and allowlists them out of every request payload.
+  propertyCasualtyClaimNumber?: string;
+  relatedCausesCode?: Array<'AA' | 'EM' | 'OA'>;
+  autoAccidentStateCode?: string;
+  claimDateInformation?: ClaimDateInformation;
+  claimNote?: ClaimNote;
   claimSupplementalInformation?: ClaimSupplementalInformation;
-  serviceFacilityLocation?: {
-    organizationName?: string;
-    address?: Address;
-    npi?: string;
-  };
+  serviceFacilityLocation?: ServiceFacilityLocation;
+  // UI-only flags retained in saved drafts. They are not sent to Optum.
   hasOtherHealthBenefitPlan?: boolean;
   autoAccident?: boolean;
   autoAccidentState?: string;
@@ -138,10 +180,10 @@ export interface Receiver {
 export interface ClaimSubmissionRequest {
   controlNumber: string;
   tradingPartnerServiceId?: string;
+  tradingPartnerName?: string;
   submitter: Submitter;
   receiver: Receiver;
   subscriber: Subscriber;
-  dependent?: Dependent;
   billing: Provider;
   rendering?: Provider;
   referring?: Provider;
@@ -164,6 +206,7 @@ export interface ClaimResponse {
     claimType?: string;
     payerID?: string;
     formatVersion?: string;
+    rhClaimNumber?: string;
     rhclaimNumber?: string;
   };
   errors?: Array<{
@@ -205,4 +248,3 @@ export interface ClaimResponse {
     description?: string;
   };
 }
-

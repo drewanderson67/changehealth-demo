@@ -4,8 +4,8 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   title: string;
-  request?: any;
-  response?: any;
+  request?: unknown;
+  response?: unknown;
   error?: string | null;
 }
 
@@ -56,7 +56,7 @@ export default function ApiResponseModal({ isOpen, onClose, title, request, resp
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Request Section */}
-          {request && (
+          {request !== undefined && request !== null && (
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-semibold text-blue-700">Request</h3>
@@ -76,7 +76,7 @@ export default function ApiResponseModal({ isOpen, onClose, title, request, resp
           )}
 
           {/* Response Section */}
-          {response && (
+          {response !== undefined && response !== null && (
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-semibold text-green-700">Response</h3>
@@ -129,4 +129,3 @@ export default function ApiResponseModal({ isOpen, onClose, title, request, resp
     </div>
   );
 }
-

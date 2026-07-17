@@ -6,10 +6,11 @@ interface Props {
   request: ClaimSubmissionRequest | null;
   response: ClaimResponse | null;
   error: string | null;
+  requestEndpoint: string;
   onGeneratePDF?: () => void;
 }
 
-export default function ClaimResponseDisplay({ request, response, error, onGeneratePDF }: Props) {
+export default function ClaimResponseDisplay({ request, response, error, requestEndpoint, onGeneratePDF }: Props) {
   const [showModal, setShowModal] = useState(false);
 
   if (error) {
@@ -47,9 +48,9 @@ export default function ClaimResponseDisplay({ request, response, error, onGener
         <ApiResponseModal
           isOpen={showModal}
           onClose={() => setShowModal(false)}
-          title="Claim API Request/Response"
+          title="Optum Claim API Request/Response"
           request={request ? {
-            endpoint: `/api/claims/validate`,
+            endpoint: requestEndpoint,
             method: 'POST',
             body: request
           } : undefined}
@@ -76,6 +77,12 @@ export default function ClaimResponseDisplay({ request, response, error, onGener
                 {isSuccess ? 'Claim Processed Successfully' : 'Claim Processed with Warnings'}
               </h3>
               <div className="text-xs sm:text-sm text-gray-600 mt-1 space-y-1">
+                {(response.claimReference?.rhclaimNumber || response.claimReference?.rhClaimNumber) && (
+                  <p>
+                    Optum Clearinghouse Tracking Number:{' '}
+                    {response.claimReference.rhclaimNumber || response.claimReference.rhClaimNumber}
+                  </p>
+                )}
                 {response.claimReference?.correlationId && (
                   <p>Correlation ID: {response.claimReference.correlationId}</p>
                 )}
@@ -333,9 +340,9 @@ export default function ClaimResponseDisplay({ request, response, error, onGener
       <ApiResponseModal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title="Claim API Request/Response"
+        title="Optum Claim API Request/Response"
         request={request ? {
-          endpoint: `/api/claims/${response ? 'submit' : 'validate'}`,
+          endpoint: requestEndpoint,
           method: 'POST',
           body: request
         } : undefined}
@@ -345,4 +352,3 @@ export default function ClaimResponseDisplay({ request, response, error, onGener
     </>
   );
 }
-

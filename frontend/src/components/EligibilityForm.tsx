@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { lookupPayer, getAllPayers, exportPayerList, parseCsvToPayers, type PayerLookupResult, type Payer } from '../services/api';
+import { lookupPayer, exportPayerList, parseCsvToPayers, type PayerLookupResult, type Payer } from '../services/api';
 import providerOptionsData from '../data/providerOptions.json';
 import type { EligibilityRequest, Environment } from '../types/eligibility';
 import ApiResponseModal from './ApiResponseModal';
@@ -61,7 +61,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
     return defaultData;
   });
 
-  const [payerLookup, setPayerLookup] = useState<{
+  const [, setPayerLookup] = useState<{
     loading: boolean;
     result: PayerLookupResult | null;
     error: string | null;
@@ -86,7 +86,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
   const [payersApiResponse, setPayersApiResponse] = useState<any>(null);
   const [payerIdOverride, setPayerIdOverride] = useState('');
 
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load payers list function (extracted so it can be called manually)
   const loadPayers = async (clearCache = false) => {
@@ -634,4 +634,3 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
     </form>
   );
 }
-
