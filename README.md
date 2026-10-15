@@ -504,3 +504,7 @@ VITE_BASE=/changehealth-demo/ npm run build:static   # output in frontend/dist-p
 ```
 
 `VITE_STATIC_DEMO=true` makes `src/demo/staticApi.ts` answer every `/api/*` request in the browser using `backend/src/services/mockOptum.ts` and `backend/src/services/pdfGenerator.ts` (bundled with pdfkit's browser build). No Optum calls are made. `VITE_BASE` is the path the site is served from (`/` by default).
+
+### Install and offline use
+
+Production builds register `frontend/public/sw.js`, a network-first service worker: new builds load as soon as you're online, and the cached app opens offline. `/api/*` responses are never cached. The static demo keeps working offline because its mock API runs in the browser. The build stamp in the page footer shows which build you're running. On iPhone, open the site in Safari and use **Share → Add to Home Screen**.

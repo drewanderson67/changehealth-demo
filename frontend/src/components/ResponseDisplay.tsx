@@ -80,7 +80,7 @@ export default function ResponseDisplay({ request, response, error }: Props) {
           {response.errors && response.errors.length > 0 && (
             <div className="mt-3 p-2 bg-red-100 border border-red-300 rounded-sm">
               <p className="text-xs sm:text-sm font-medium text-red-800">
-                ⚠️ {response.errors.length} error(s) found - see details below
+                {response.errors.length} error(s) found - see details below
               </p>
             </div>
           )}

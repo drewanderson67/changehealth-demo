@@ -1441,7 +1441,8 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      window.URL.revokeObjectURL(url);
+      // Revoking immediately can cancel the download before the browser reads the blob.
+      setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -1658,9 +1659,9 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
             
             <div className="mt-2 text-xs text-gray-600">
               {submitAsTest ? (
-                <p>✅ Test mode: Claim will be validated but NOT submitted to payer</p>
+                <p>Test mode: Claim will be validated but NOT submitted to payer</p>
               ) : (
-                <p className="text-red-700 font-semibold">⚠️ Live mode: Claim WILL be submitted to payer for processing</p>
+                <p className="text-red-700 font-semibold">Warning: live mode: Claim WILL be submitted to payer for processing</p>
               )}
             </div>
             {isOptumSandbox && (
@@ -2769,7 +2770,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 <button
                   type="button"
                   onClick={addServiceLine}
-                  className="w-full px-3 py-2 bg-[#9e32e2] text-white rounded-sm hover:bg-[#8a2bc9] text-sm font-semibold"
+                  className="w-full px-3 py-2 bg-[var(--color-brand-600)] text-white rounded-sm hover:bg-[#8a2bc9] text-sm font-semibold"
                 >
                   + Add Service Line
                 </button>
@@ -3137,7 +3138,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               className={`flex-1 px-6 py-3 rounded-md font-semibold ${
                 loading && actionType === 'submit'
                   ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-[#9e32e2] hover:bg-[#8a2bc9]'
+                  : 'bg-[var(--color-brand-600)] hover:bg-[#8a2bc9]'
               } text-white disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               {loading && actionType === 'submit' ? 'Submitting...' : 'Submit Claim'}

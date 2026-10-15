@@ -121,7 +121,7 @@ export default function ClaimResponseDisplay({ request, response, error, request
           {hasErrors && (
             <div className="mt-3 p-2 bg-red-100 border border-red-300 rounded-sm">
               <p className="text-xs sm:text-sm font-medium text-red-800">
-                ⚠️ {response.errors!.length} error(s) found - see details below
+                {response.errors!.length} error(s) found - see details below
               </p>
             </div>
           )}
@@ -129,7 +129,7 @@ export default function ClaimResponseDisplay({ request, response, error, request
           {hasEditResponses && (
             <div className="mt-3 p-2 bg-yellow-100 border border-yellow-300 rounded-sm">
               <p className="text-xs sm:text-sm font-medium text-yellow-800">
-                ⚠️ {response.editResponses!.length} edit response(s) found - see details below
+                {response.editResponses!.length} edit response(s) found - see details below
               </p>
             </div>
           )}

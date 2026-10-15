@@ -72,7 +72,7 @@ router.post('/generate-pdf', async (req, res, next) => {
 
     console.log('Generating CMS 1500 PDF...');
 
-    const pdfBuffer = generateCMS1500PDF(claimData);
+    const pdfBuffer = await generateCMS1500PDF(claimData);
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename=cms-1500-claim.pdf');

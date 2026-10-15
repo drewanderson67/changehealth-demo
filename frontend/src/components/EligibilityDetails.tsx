@@ -309,7 +309,7 @@ export default function EligibilityDetails({ response }: Props) {
           <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">Dependents</h2>
           <div className="space-y-3">
             {dependents.map((dependent, idx: number) => (
-              <div key={idx} className="p-3 bg-purple-50 rounded-sm border border-purple-200">
+              <div key={idx} className="p-3 bg-brand-50 rounded-sm border border-brand-200">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                   {dependent.firstName && dependent.lastName && (
                     <p className="font-semibold text-gray-900">{dependent.firstName} {dependent.lastName}</p>
