@@ -1,4 +1,5 @@
 import type { EligibilityRequest, EligibilityResponse, Environment } from '../types/eligibility';
+import { readErrorBody } from './http';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:9001';
 
@@ -22,7 +23,7 @@ export async function checkEligibility(
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    const error = await readErrorBody(response);
     const errorMessage = error.message || `Request failed with status code ${error.statusCode || response.status}`;
     const fullError = {
       message: errorMessage,
@@ -83,7 +84,7 @@ export async function lookupPayer(
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    const error = await readErrorBody(response);
     // Include Optum API details in error for debugging
     const errorMessage = error.message || 'Payer lookup failed';
     const fullError = {
@@ -185,7 +186,7 @@ export async function getAllPayers(
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    const error = await readErrorBody(response);
     // Include Optum API details in error for debugging
     const errorMessage = error.message || 'Failed to fetch payers';
     const fullError = {
@@ -235,7 +236,7 @@ export async function exportPayerList(
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    const error = await readErrorBody(response);
     // Include Optum API details in error for debugging
     const errorMessage = error.message || 'Failed to export payers';
     const fullError = {

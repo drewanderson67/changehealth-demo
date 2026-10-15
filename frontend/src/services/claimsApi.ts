@@ -1,5 +1,6 @@
 import type { ClaimSubmissionRequest, ClaimResponse } from '../types/claims';
 import type { Environment } from '../types/eligibility';
+import { readErrorBody } from './http';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:9001';
 
@@ -71,7 +72,7 @@ export async function validateClaim(
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    const error = await readErrorBody(response);
     const errorMessage = error.message || `Request failed with status code ${error.statusCode || response.status}`;
     const fullError = {
       message: errorMessage,
@@ -109,7 +110,7 @@ export async function submitClaim(
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    const error = await readErrorBody(response);
     const errorMessage = error.message || `Request failed with status code ${error.statusCode || response.status}`;
     const fullError = {
       message: errorMessage,
@@ -133,7 +134,7 @@ export async function generateClaimPDF(
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    const error = await readErrorBody(response);
     throw new Error(error.message || 'Failed to generate PDF');
   }
 
