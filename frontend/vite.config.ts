@@ -5,6 +5,9 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    allowedHosts: ['changehealth.reperiohealth.com'],
+    allowedHosts: process.env.VITE_ALLOW_ALL_HOSTS === 'true' ? true : ['changehealth.reperiohealth.com'],
+    proxy: {
+      '/api': process.env.VITE_API_PROXY_TARGET || 'http://localhost:9001',
+    },
   },
 })

@@ -150,6 +150,22 @@ OPTUM_PROD_PAYER_CLIENT_SECRET=<value>
 PORT=3001
 ```
 
+## 🧪 Mock Mode (no Optum credentials)
+
+When `backend/.env` has no sandbox or production eligibility credentials (or `OPTUM_MOCK_MODE=true`), the backend returns simulated Optum responses instead of calling Optum. The UI shows a "Mock mode" badge in the header. Set `OPTUM_MOCK_MODE=false` to force real API calls.
+
+```bash
+cd backend && npm install && PORT=9001 npm run dev        # mock mode, no .env needed
+cd frontend && npm install && npm run dev                 # targets http://localhost:9001
+```
+
+Mock behavior:
+- **Payers**: Aetna (`AETNA`), Anthem (`ANTHM`), Florida Blue (`BCBSF`), Cigna (`CIGNA`), Humana (`HUMANA`), Kaiser (`KAISER`), UnitedHealthcare (`87726`).
+- **Eligibility**: any member ID returns active commercial coverage with deductibles, OOP max, copays, coinsurance, and limitations. Member IDs starting with `TERM` return inactive coverage; `NOTFOUND` returns AAA 75 (subscriber not found). Unknown payer IDs return AAA 42.
+- **Claims**: validation checks billing/rendering NPI Luhn check digits, member ID, diagnosis codes, 5-character procedure codes, positive line charges, and that the claim total equals the sum of line charges. Submission runs the same checks and returns a mock claim number on success.
+
+Set `VITE_API_BASE_URL=` (empty) to have the frontend call `/api` on its own origin; the Vite dev server proxies `/api` to `VITE_API_PROXY_TARGET` (default `http://localhost:9001`). `VITE_ALLOW_ALL_HOSTS=true` lets the dev server accept any host header.
+
 ## 🚀 Local Development
 
 ### Prerequisites
@@ -348,6 +364,9 @@ Credential selection is based on the environment sent by the frontend:
 - **POST** `/api/claims/submit` - Submit claim for processing
 - **POST** `/api/claims/generate-pdf` - Generate CMS 1500 PDF
 
+#### Status
+- **GET** `/api/status` - Returns `{ "mock": true | false }`
+
 ## 📚 Documentation
 
 ### API Requirements & Field Mapping
@@ -390,6 +409,7 @@ VITE_API_BASE_URL=http://localhost:3001 npm run dev
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `3002` in code | Backend server port; set to `3001` for Docker Compose |
+| `OPTUM_MOCK_MODE` | auto | `true` = simulated responses, `false` = real Optum calls; unset = mock when no eligibility credentials are set |
 | `OPTUM_SANDBOX_CLIENT_ID` | - | Client ID for sandbox eligibility and claims |
 | `OPTUM_SANDBOX_CLIENT_SECRET` | - | Client secret for sandbox eligibility and claims |
 | `OPTUM_PROD_ELIGIBILITY_CLIENT_ID` | - | Client ID for production eligibility and claims |

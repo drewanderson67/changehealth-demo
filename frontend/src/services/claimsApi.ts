@@ -1,7 +1,7 @@
 import type { ClaimSubmissionRequest, ClaimResponse } from '../types/claims';
 import type { Environment } from '../types/eligibility';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:9001';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:9001';
 
 // Validate required header fields
 function validateRequiredFields(data: ClaimSubmissionRequest): string[] {

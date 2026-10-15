@@ -1,4 +1,13 @@
 import axios from 'axios';
+import {
+  isMockMode,
+  mockCheckEligibility,
+  mockLookupPayer,
+  mockGetAllPayers,
+  mockExportPayerList,
+  mockValidateClaim,
+  mockSubmitClaim
+} from './mockOptum';
 
 function getBaseUrl(environment?: string): string {
   const env = environment || 'production';
@@ -94,6 +103,8 @@ async function getAccessToken(credentials: Credentials, environment?: string, sc
 }
 
 export async function checkEligibility(requestData: any, environment?: string) {
+  if (isMockMode()) return mockCheckEligibility(requestData, environment);
+
   const creds = resolveCredentials(environment, 'eligibility');
 
   const baseUrl = getBaseUrl(environment);
@@ -126,6 +137,8 @@ export async function checkEligibility(requestData: any, environment?: string) {
  * Uses Payer Lookup API credentials internally
  */
 export async function lookupPayer(payerListParams: any, environment?: string) {
+  if (isMockMode()) return mockLookupPayer(payerListParams);
+
   const creds = resolveCredentials(environment, 'payer');
 
   const baseUrl = getPayerListBaseUrl(); // Always use prod for PayerList
@@ -169,6 +182,8 @@ export async function lookupPayer(payerListParams: any, environment?: string) {
  * Uses Payer Lookup API credentials internally
  */
 export async function getAllPayers(payerListParams: any, environment?: string) {
+  if (isMockMode()) return mockGetAllPayers(payerListParams);
+
   const creds = resolveCredentials(environment, 'payer');
 
   const baseUrl = getPayerListBaseUrl();
@@ -212,6 +227,8 @@ export async function getAllPayers(payerListParams: any, environment?: string) {
  * Uses Payer Lookup API credentials internally
  */
 export async function exportPayerList(payerListParams: any, environment?: string) {
+  if (isMockMode()) return mockExportPayerList(payerListParams);
+
   const creds = resolveCredentials(environment, 'payer');
 
   const baseUrl = getPayerListBaseUrl();
@@ -254,6 +271,8 @@ export async function exportPayerList(payerListParams: any, environment?: string
 }
 
 export async function validateClaim(requestData: any, environment?: string) {
+  if (isMockMode()) return mockValidateClaim(requestData);
+
   const creds = resolveCredentials(environment, 'eligibility');
 
   const baseUrl = getBaseUrl(environment);
@@ -282,6 +301,8 @@ export async function validateClaim(requestData: any, environment?: string) {
 }
 
 export async function submitClaim(requestData: any, environment?: string) {
+  if (isMockMode()) return mockSubmitClaim(requestData);
+
   const creds = resolveCredentials(environment, 'eligibility');
 
   const baseUrl = getBaseUrl(environment);

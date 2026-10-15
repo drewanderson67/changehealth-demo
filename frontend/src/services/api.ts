@@ -1,6 +1,12 @@
 import type { EligibilityRequest, EligibilityResponse, Environment } from '../types/eligibility';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:9001';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:9001';
+
+export async function getBackendStatus(): Promise<{ mock: boolean }> {
+  const response = await fetch(`${API_BASE_URL}/api/status`);
+  if (!response.ok) throw new Error(`Status check failed: ${response.status}`);
+  return response.json();
+}
 
 export async function checkEligibility(
   data: EligibilityRequest,
