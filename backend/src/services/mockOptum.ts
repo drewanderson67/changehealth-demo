@@ -169,6 +169,14 @@ export async function mockCheckEligibility(request: any, environment?: string) {
     },
   };
 
+  if (payer && !memberId) {
+    return {
+      ...base,
+      subscriber: { firstName: subscriberIn.firstName, lastName: subscriberIn.lastName },
+      errors: [{ field: 'AAA', code: '72', description: 'Invalid/Missing Subscriber/Insured ID', followupAction: 'Please Correct and Resubmit', location: 'Loop 2100C' }],
+    };
+  }
+
   if (!payer || memberId.startsWith('NOTFOUND')) {
     return {
       ...base,

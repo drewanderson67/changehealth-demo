@@ -1566,7 +1566,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
     setSubmitAsTest(true);
     setPatientSignatureOnFile(true);
     setAuthorizedSignatureOnFile(true);
-    setPhysicianSignatureDate('');
+    setPhysicianSignatureDate(new Date().toLocaleDateString('en-CA'));
     setOptumTrackingNumber('');
     setResponse(null);
     setError(null);
