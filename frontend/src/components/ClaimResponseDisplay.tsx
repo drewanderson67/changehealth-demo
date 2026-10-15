@@ -38,7 +38,7 @@ export default function ClaimResponseDisplay({ request, response, error, request
             </div>
             <p className="text-red-600">{displayMessage}</p>
             {errorObj?.details && (
-              <div className="mt-3 p-3 bg-white rounded border border-red-300">
+              <div className="mt-3 p-3 bg-white rounded-sm border border-red-300">
                 <pre className="text-xs overflow-auto">{JSON.stringify(errorObj.details, null, 2)}</pre>
               </div>
             )}
@@ -104,14 +104,14 @@ export default function ClaimResponseDisplay({ request, response, error, request
               {onGeneratePDF && (
                 <button
                   onClick={onGeneratePDF}
-                  className="px-3 py-1.5 text-xs sm:text-sm bg-blue-600 text-white rounded hover:bg-blue-700 whitespace-nowrap"
+                  className="px-3 py-1.5 text-xs sm:text-sm bg-blue-600 text-white rounded-sm hover:bg-blue-700 whitespace-nowrap"
                 >
                   Download PDF
                 </button>
               )}
               <button
                 onClick={() => setShowModal(true)}
-                className="px-3 py-1.5 text-xs sm:text-sm bg-gray-600 text-white rounded hover:bg-gray-700 whitespace-nowrap"
+                className="px-3 py-1.5 text-xs sm:text-sm bg-gray-600 text-white rounded-sm hover:bg-gray-700 whitespace-nowrap"
               >
                 View Raw JSON
               </button>
@@ -119,17 +119,17 @@ export default function ClaimResponseDisplay({ request, response, error, request
           </div>
           
           {hasErrors && (
-            <div className="mt-3 p-2 bg-red-100 border border-red-300 rounded">
+            <div className="mt-3 p-2 bg-red-100 border border-red-300 rounded-sm">
               <p className="text-xs sm:text-sm font-medium text-red-800">
-                ⚠️ {response.errors!.length} error(s) found - see details below
+                {response.errors!.length} error(s) found - see details below
               </p>
             </div>
           )}
           
           {hasEditResponses && (
-            <div className="mt-3 p-2 bg-yellow-100 border border-yellow-300 rounded">
+            <div className="mt-3 p-2 bg-yellow-100 border border-yellow-300 rounded-sm">
               <p className="text-xs sm:text-sm font-medium text-yellow-800">
-                ⚠️ {response.editResponses!.length} edit response(s) found - see details below
+                {response.editResponses!.length} edit response(s) found - see details below
               </p>
             </div>
           )}
@@ -162,7 +162,7 @@ export default function ClaimResponseDisplay({ request, response, error, request
             <h4 className="font-semibold text-red-800 mb-3">Errors</h4>
             <div className="space-y-3">
               {response.errors!.map((err, index) => (
-                <div key={index} className="border border-red-200 rounded p-3 bg-red-50">
+                <div key={index} className="border border-red-200 rounded-sm p-3 bg-red-50">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                     {err.field && (
                       <div>
@@ -213,7 +213,7 @@ export default function ClaimResponseDisplay({ request, response, error, request
             <h4 className="font-semibold text-yellow-800 mb-3">Edit Responses</h4>
             <div className="space-y-3">
               {response.editResponses!.map((edit, index) => (
-                <div key={index} className="border border-yellow-200 rounded p-3 bg-yellow-50">
+                <div key={index} className="border border-yellow-200 rounded-sm p-3 bg-yellow-50">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                     {edit.editName && (
                       <div>

@@ -335,9 +335,14 @@ export function writeCMS1500PDF(
   doc.end();
 }
 
-export function generateCMS1500PDF(claimData: ClaimSubmissionRequest): Buffer {
-  const buffers: Buffer[] = [];
-  writeCMS1500PDF(claimData, chunk => buffers.push(chunk));
-  return Buffer.concat(buffers);
+export function generateCMS1500PDF(claimData: ClaimSubmissionRequest): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const buffers: Buffer[] = [];
+    try {
+      writeCMS1500PDF(claimData, chunk => buffers.push(chunk), () => resolve(Buffer.concat(buffers)));
+    } catch (err) {
+      reject(err);
+    }
+  });
 }
 

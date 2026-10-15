@@ -8,7 +8,6 @@ import {
   mockSubmitClaim,
   mockValidateClaim
 } from '../../../backend/src/services/mockOptum';
-import { writeCMS1500PDF } from '../../../backend/src/services/pdfGenerator';
 import type { ClaimSubmissionRequest } from '../../../backend/src/services/types';
 
 type Body = Record<string, unknown>;
@@ -36,7 +35,9 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-function pdf(claimData: ClaimSubmissionRequest): Promise<Response> {
+async function pdf(claimData: ClaimSubmissionRequest): Promise<Response> {
+  // pdfkit is large; load it only when a PDF is requested.
+  const { writeCMS1500PDF } = await import('../../../backend/src/services/pdfGenerator');
   return new Promise((resolve, reject) => {
     const chunks: Uint8Array[] = [];
     try {

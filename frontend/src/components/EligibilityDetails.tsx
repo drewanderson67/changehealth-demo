@@ -183,7 +183,7 @@ export default function EligibilityDetails({ response }: Props) {
     <div className="space-y-4">
       {/* Transaction Information */}
       {(meta.senderId || meta.traceId || response.controlNumber || response.reassociationKey) && (
-        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
+        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-xs">
           <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">Transaction Information</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
             {meta.traceId && <KeyValueDisplay label="Trace ID" value={meta.traceId} />}
@@ -200,7 +200,7 @@ export default function EligibilityDetails({ response }: Props) {
 
       {/* Provider Information */}
       {provider && Object.keys(provider).length > 0 && (
-        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
+        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-xs">
           <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">Provider Information</h2>
           <div className="space-y-2 text-sm">
             {provider.providerName && <KeyValueDisplay label="Provider Name" value={provider.providerName} />}
@@ -219,7 +219,7 @@ export default function EligibilityDetails({ response }: Props) {
       )}
 
       {/* Patient & Insurance Summary Card */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-lg p-4 shadow-sm">
+      <div className="bg-linear-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-lg p-4 shadow-xs">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <h3 className="text-xs font-semibold text-gray-600 uppercase mb-2">Patient Information</h3>
@@ -286,11 +286,11 @@ export default function EligibilityDetails({ response }: Props) {
 
       {/* Subscriber Trace Numbers */}
       {subscriberTraceNumbers.length > 0 && (
-        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
+        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-xs">
           <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">Subscriber Trace Numbers</h2>
           <div className="space-y-2">
             {subscriberTraceNumbers.map((trace, idx) => (
-              <div key={idx} className="p-3 bg-gray-50 rounded border border-gray-200">
+              <div key={idx} className="p-3 bg-gray-50 rounded-sm border border-gray-200">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                   {trace.traceType && <KeyValueDisplay label="Trace Type" value={trace.traceType} />}
                   {trace.traceTypeCode && <KeyValueDisplay label="Trace Type Code" value={trace.traceTypeCode} />}
@@ -305,11 +305,11 @@ export default function EligibilityDetails({ response }: Props) {
 
       {/* Dependents */}
       {dependents.length > 0 && (
-        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
+        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-xs">
           <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">Dependents</h2>
           <div className="space-y-3">
             {dependents.map((dependent, idx: number) => (
-              <div key={idx} className="p-3 bg-purple-50 rounded border border-purple-200">
+              <div key={idx} className="p-3 bg-brand-50 rounded-sm border border-brand-200">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                   {dependent.firstName && dependent.lastName && (
                     <p className="font-semibold text-gray-900">{dependent.firstName} {dependent.lastName}</p>
@@ -329,11 +329,11 @@ export default function EligibilityDetails({ response }: Props) {
 
       {/* Plan Status */}
       {planStatus.length > 0 && (
-        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
+        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-xs">
           <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">Plan Status</h2>
           <div className="space-y-2">
             {planStatus.map((status, idx) => (
-              <div key={idx} className="p-3 bg-green-50 rounded border border-green-200">
+              <div key={idx} className="p-3 bg-green-50 rounded-sm border border-green-200">
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex-1">
                     {status.status && (
@@ -354,7 +354,7 @@ export default function EligibilityDetails({ response }: Props) {
                     {status.serviceTypeCodes.map((code: string) => (
                       <span 
                         key={code}
-                        className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                        className="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-blue-100 text-blue-800"
                       >
                         {SERVICE_TYPE_NAMES[code] || code}
                       </span>
@@ -369,11 +369,11 @@ export default function EligibilityDetails({ response }: Props) {
 
       {/* Coverage Status */}
       {activeCoverage.length > 0 && (
-        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
+        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-xs">
           <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">Coverage Status</h2>
           <div className="space-y-3">
             {activeCoverage.map((coverage, idx) => (
-              <div key={idx} className="p-3 bg-green-50 rounded border border-green-200">
+              <div key={idx} className="p-3 bg-green-50 rounded-sm border border-green-200">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
@@ -410,7 +410,7 @@ export default function EligibilityDetails({ response }: Props) {
                         {coverage.serviceTypeCodes.map((code: string) => (
                           <span 
                             key={code}
-                            className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                            className="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-blue-100 text-blue-800"
                           >
                             {SERVICE_TYPE_NAMES[code] || code}
                           </span>
@@ -456,12 +456,12 @@ export default function EligibilityDetails({ response }: Props) {
 
       {/* Primary Care Provider */}
       {primaryCareProvider.length > 0 && (
-        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
+        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-xs">
           <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">Primary Care Provider</h2>
           {primaryCareProvider.map((pcp, idx) => {
             const entity = pcp.benefitsRelatedEntity || {};
             return (
-              <div key={idx} className="p-3 bg-blue-50 rounded border border-blue-200">
+              <div key={idx} className="p-3 bg-blue-50 rounded-sm border border-blue-200">
                 <div className="space-y-1">
                   {(entity.entityFirstname || entity.entityName) && (
                 <p className="font-semibold text-gray-900">
@@ -508,7 +508,7 @@ export default function EligibilityDetails({ response }: Props) {
 
       {/* Deductibles - Matrix Format */}
       {Object.keys(organizedDeductibles).length > 0 && (
-        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
+        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-xs">
           <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">Deductibles</h2>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -620,7 +620,7 @@ export default function EligibilityDetails({ response }: Props) {
 
       {/* Out of Pocket Maximum - Matrix Format */}
       {Object.keys(organizedOOPMax).length > 0 && (
-        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
+        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-xs">
           <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">Out of Pocket Maximum</h2>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -722,7 +722,7 @@ export default function EligibilityDetails({ response }: Props) {
 
       {/* Co-Payments - Grouped by Service */}
       {Object.keys(organizedCopays).length > 0 && (
-        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
+        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-xs">
           <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">Co-Payments</h2>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -834,7 +834,7 @@ export default function EligibilityDetails({ response }: Props) {
 
       {/* Co-Insurance - Grouped by Service */}
       {Object.keys(organizedCoinsurance).length > 0 && (
-        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
+        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-xs">
           <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">Co-Insurance</h2>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -946,13 +946,13 @@ export default function EligibilityDetails({ response }: Props) {
 
       {/* Secondary Payors */}
       {secondaryPayors.length > 0 && (
-        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
+        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-xs">
           <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">Secondary/Additional Payors</h2>
           <div className="space-y-2">
             {secondaryPayors.map((payor, idx) => {
               const entity = payor.benefitsRelatedEntity || {};
               return (
-                <div key={idx} className="p-3 bg-yellow-50 rounded border border-yellow-200">
+                <div key={idx} className="p-3 bg-yellow-50 rounded-sm border border-yellow-200">
                   <div className="space-y-1">
                   <p className="font-medium text-gray-900">{entity.entityName || 'Unknown'}</p>
                     {entity.entityIdentifier && (
@@ -966,7 +966,7 @@ export default function EligibilityDetails({ response }: Props) {
                         <p className="text-xs font-medium text-gray-700 mb-1">Services:</p>
                         <div className="flex flex-wrap gap-1">
                           {payor.serviceTypeCodes.map((code: string) => (
-                            <span key={code} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                            <span key={code} className="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-yellow-100 text-yellow-800">
                               {SERVICE_TYPE_NAMES[code] || code}
                             </span>
                           ))}
@@ -1009,11 +1009,11 @@ export default function EligibilityDetails({ response }: Props) {
 
       {/* Limitations */}
       {limitations.length > 0 && (
-        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
+        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-xs">
           <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">Limitations & Requirements</h2>
           <div className="space-y-2">
             {limitations.map((lim, idx) => (
-              <div key={idx} className="p-3 bg-orange-50 rounded border border-orange-200">
+              <div key={idx} className="p-3 bg-orange-50 rounded-sm border border-orange-200">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     {lim.serviceTypeCodes && lim.serviceTypeCodes.length > 0 && (
@@ -1021,7 +1021,7 @@ export default function EligibilityDetails({ response }: Props) {
                         <p className="text-xs font-medium text-gray-700 mb-1">Service Types:</p>
                         <div className="flex flex-wrap gap-1">
                           {lim.serviceTypeCodes.map((code: string) => (
-                            <span key={code} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                            <span key={code} className="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-orange-100 text-orange-800">
                               {SERVICE_TYPE_NAMES[code] || code}
                             </span>
                           ))}
@@ -1056,13 +1056,13 @@ export default function EligibilityDetails({ response }: Props) {
 
       {/* Additional Response Information */}
       {(response.status || response.transactionSetAcknowledgement || response.implementationTransactionSetSyntaxError) && (
-        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
+        <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-xs">
           <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">Response Status</h2>
           <div className="space-y-2 text-sm">
             {response.status && <KeyValueDisplay label="Status" value={response.status} />}
             {response.transactionSetAcknowledgement && <KeyValueDisplay label="Transaction Set Acknowledgement" value={response.transactionSetAcknowledgement} />}
             {response.implementationTransactionSetSyntaxError && (
-              <div className="p-2 bg-red-50 rounded border border-red-200">
+              <div className="p-2 bg-red-50 rounded-sm border border-red-200">
                 <KeyValueDisplay label="Implementation Transaction Set Syntax Error" value={response.implementationTransactionSetSyntaxError} />
               </div>
             )}
@@ -1072,11 +1072,11 @@ export default function EligibilityDetails({ response }: Props) {
 
       {/* Errors */}
       {response.errors && response.errors.length > 0 && (
-        <div className="bg-white border border-red-300 rounded-lg p-4 shadow-sm">
+        <div className="bg-white border border-red-300 rounded-lg p-4 shadow-xs">
           <h2 className="text-lg font-bold mb-3 text-red-800 border-b border-red-300 pb-2">Errors</h2>
           <div className="space-y-2">
             {response.errors.map((error, idx) => (
-              <div key={idx} className="p-3 bg-red-50 rounded border border-red-200">
+              <div key={idx} className="p-3 bg-red-50 rounded-sm border border-red-200">
                 <p className="text-sm font-medium text-red-900">{error.field || 'Error'}</p>
                 <p className="text-sm text-red-700 mt-1">{error.description || error.message || 'Unknown error'}</p>
                 {error.code && (

@@ -120,118 +120,105 @@ export default function EligibilityChecker({
     setError(null);
   };
 
+  const emptyPanel = 'rounded-2xl border-2 border-dashed border-slate-300 bg-slate-100/60 min-h-64 lg:min-h-[28rem] flex items-center justify-center p-6';
+
   return (
-    <div className="flex gap-6 lg:h-[calc(100vh-200px)] relative">
-      {/* Left Column - Form */}
-      <div className="flex-shrink-0 lg:w-1/2 xl:w-2/5 flex flex-col" style={{ width: showLogs ? '40%' : '50%' }}>
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 flex-1 overflow-y-auto">
-          <EnvironmentSelector 
-            environment={environment} 
-            onEnvironmentChange={handleEnvironmentChange} 
-          />
-          <div className="mt-6">
-            <EligibilityForm
-              onSubmit={handleSubmit}
-              loading={loading}
-              environment={environment}
-            />
-          </div>
-        </div>
+    <div className={`grid gap-6 items-start ${showLogs ? 'lg:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)]' : 'lg:grid-cols-2'}`}>
+      {/* Form */}
+      <div className="min-w-0">
+        <EnvironmentSelector
+          environment={environment}
+          onEnvironmentChange={handleEnvironmentChange}
+        />
+        <EligibilityForm
+          onSubmit={handleSubmit}
+          loading={loading}
+          environment={environment}
+        />
       </div>
 
-      {/* Middle Column - Results */}
-      <div className="flex-1 flex flex-col min-h-0" style={{ width: showLogs ? '40%' : '50%' }}>
+      {/* Results */}
+      <div className="min-w-0">
         {loading ? (
-          <div className="bg-gray-100 rounded-lg border-2 border-dashed border-gray-300 flex-1 flex items-center justify-center">
-            <div className="text-center text-gray-500 space-y-4">
-              <div className="flex justify-center">
-                <svg className="animate-spin h-12 w-12 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-              </div>
-              <div className="space-y-2">
-                <p className="text-lg font-medium text-gray-700">Checking eligibility...</p>
-                <p className="text-sm text-gray-500">Eligibility results will appear here</p>
-              </div>
+          <div className={emptyPanel}>
+            <div className="text-center text-slate-500 space-y-4">
+              <svg className="mx-auto animate-spin h-10 w-10 text-brand-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <p className="text-base font-medium text-slate-700">Checking eligibility...</p>
             </div>
           </div>
         ) : (response || error) ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 overflow-y-auto">
+          <div className="card overflow-hidden">
             <ResponseDisplay request={lastRequest} response={response} error={error} />
           </div>
         ) : (
-          <div className="bg-gray-100 rounded-lg border-2 border-dashed border-gray-300 flex-1 flex items-center justify-center">
-            <div className="text-center text-gray-500">
-              <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className={emptyPanel}>
+            <div className="text-center text-slate-500">
+              <svg className="mx-auto h-10 w-10 text-slate-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              <p className="text-lg font-medium">Eligibility results will appear here</p>
-              <p className="text-sm mt-2">Fill out the form and click "Check Eligibility" to get started</p>
+              <p className="text-base font-medium">Eligibility results will appear here</p>
+              <p className="text-sm mt-1">Fill out the form and click "Check Eligibility" to get started</p>
             </div>
           </div>
         )}
       </div>
 
-      {/* Right Column - Attempt Logs */}
-      <div 
-        className={`flex flex-col bg-white rounded-lg shadow-sm border border-gray-200 transition-all duration-300 ${
-          showLogs ? 'w-[20%]' : 'w-0 overflow-hidden'
-        }`}
-      >
-        <div className="p-4 border-b flex items-center justify-between">
-          <h3 className="font-semibold text-sm">Attempt Log</h3>
-          <button
-            onClick={() => setShowLogs(!showLogs)}
-            className="text-xs text-gray-600 hover:text-gray-800"
-          >
-            {showLogs ? 'Hide' : 'Show'}
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-2 text-xs font-mono">
-          {attemptLogs.length === 0 ? (
-            <div className="text-gray-400">No attempts yet</div>
-          ) : (
-            attemptLogs.map((log, index) => (
-              <div 
-                key={index}
-                className={`p-2 rounded border ${
-                  log.status === 'success' ? 'bg-green-50 border-green-300' :
-                  log.status === 'failed' ? 'bg-red-50 border-red-300' :
-                  'bg-yellow-50 border-yellow-300'
-                }`}
-              >
-                <div className="font-semibold">
-                  {log.status === 'success' ? '✓' : log.status === 'failed' ? '✗' : '⋯'} {log.payerId}
-                </div>
-                <div className="text-gray-500">{log.timestamp}</div>
-                {log.error && (
-                  <div className="text-red-600 text-[10px] mt-1 break-words">
-                    {log.error.substring(0, 100)}
+      {/* Attempt Log */}
+      {showLogs ? (
+        <div className="card min-w-0 flex flex-col max-h-80 lg:max-h-[calc(100vh-12rem)] lg:sticky lg:top-24">
+          <div className="px-4 py-3 border-b flex items-center justify-between">
+            <h3 className="font-semibold text-sm text-slate-800">Attempt Log</h3>
+            <button
+              onClick={() => setShowLogs(false)}
+              className="text-xs font-medium text-slate-500 hover:text-slate-800"
+            >
+              Hide
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2 text-xs font-mono">
+            {attemptLogs.length === 0 ? (
+              <div className="text-slate-400 p-1">No attempts yet</div>
+            ) : (
+              attemptLogs.map((log, index) => (
+                <div
+                  key={index}
+                  className={`p-2 rounded-lg border ${
+                    log.status === 'success' ? 'bg-emerald-50 border-emerald-200' :
+                    log.status === 'failed' ? 'bg-red-50 border-red-200' :
+                    'bg-amber-50 border-amber-200'
+                  }`}
+                >
+                  <div className="font-semibold">
+                    {log.status === 'success' ? '✓' : log.status === 'failed' ? '✗' : '⋯'} {log.payerId}
                   </div>
-                )}
-                {(log.request || log.response) && (
-                  <button
-                    onClick={() => setSelectedLogIndex(index)}
-                    className="mt-1 text-blue-600 hover:text-blue-800 underline text-[10px]"
-                  >
-                    View Details
-                  </button>
-                )}
-              </div>
-            ))
-          )}
+                  <div className="text-slate-500">{log.timestamp}</div>
+                  {log.error && (
+                    <div className="text-red-600 text-[10px] mt-1 wrap-break-word">
+                      {log.error.substring(0, 100)}
+                    </div>
+                  )}
+                  {(log.request || log.response) && (
+                    <button
+                      onClick={() => setSelectedLogIndex(index)}
+                      className="mt-1 text-brand-600 hover:text-brand-800 underline text-[10px]"
+                    >
+                      View Details
+                    </button>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
         </div>
-      </div>
-
-      {/* Slideout Toggle Button */}
-      {!showLogs && (
+      ) : (
         <button
           onClick={() => setShowLogs(true)}
-          className="fixed right-0 top-1/2 -translate-y-1/2 bg-blue-600 text-white px-2 py-8 rounded-l-lg shadow-lg hover:bg-blue-700 text-xs"
-          style={{ writingMode: 'vertical-rl' }}
+          className="lg:col-span-2 justify-self-end text-xs font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-full px-3 py-1.5"
         >
-          Show Logs
+          Show attempt log
         </button>
       )}
 

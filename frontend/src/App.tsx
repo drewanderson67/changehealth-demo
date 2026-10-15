@@ -86,33 +86,40 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header - Full Width */}
-      <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl sm:text-3xl font-bold">
-              Optum API Tools
-            </h1>
+    <div className="min-h-screen">
+      <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/80 backdrop-blur-lg pt-[env(safe-area-inset-top)]">
+        <div className="mx-auto max-w-[1600px] px-4 sm:px-6 py-3 flex flex-wrap items-center gap-x-6 gap-y-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" className="w-9 h-9 rounded-xl shadow-sm" />
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-lg font-semibold tracking-tight text-slate-900 leading-tight">
+                ChangeHealth
+              </h1>
+              <p className="text-xs text-slate-500 leading-tight truncate">Optum API tools · eligibility &amp; claims</p>
+            </div>
+          </div>
+          <TabNavigation variant="desktop" activeTab={activeTab} onTabChange={handleTabChange} />
+          <div className="ml-auto flex items-center gap-2">
             {mockMode && (
               <span
-                className="px-3 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 border border-amber-300"
-                title="The backend has no Optum credentials (or OPTUM_MOCK_MODE=true) and returns simulated responses"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-amber-50 text-amber-800 ring-1 ring-amber-200"
+                title="No Optum credentials are configured (or OPTUM_MOCK_MODE=true), so responses are simulated"
               >
-                Mock mode: simulated Optum responses
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+                <span className="sm:hidden">Mock</span>
+                <span className="hidden sm:inline">Mock mode: simulated Optum responses</span>
               </span>
             )}
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Tab Navigation */}
-      <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} />
-
-      {/* Tab Content */}
-      <div className="container mx-auto px-4 py-6">
+      <main className="mx-auto max-w-[1600px] px-3 sm:px-6 py-4 sm:py-6 pb-28 md:pb-10">
         {renderTabContent()}
-      </div>
+        <p className="mt-8 text-center text-xs text-slate-400">Build {__APP_VERSION__}</p>
+      </main>
+
+      <TabNavigation variant="mobile" activeTab={activeTab} onTabChange={handleTabChange} />
     </div>
   );
 }

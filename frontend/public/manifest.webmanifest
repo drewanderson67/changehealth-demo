@@ -1,0 +1,15 @@
+{
+  "name": "ChangeHealth · Optum API Tools",
+  "short_name": "ChangeHealth",
+  "description": "Eligibility checks and CMS-1500 claims with a credential-free mock mode.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
