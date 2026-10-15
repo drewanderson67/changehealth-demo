@@ -493,3 +493,14 @@ This is a Reperio Health internal project. For questions or issues, contact the 
 ---
 
 **Built with ❤️ by Reperio Health**
+
+## Static demo (no backend)
+
+The frontend can run the mock Optum service entirely in the browser, so it can be hosted on any static host such as GitHub Pages:
+
+```bash
+cd frontend
+VITE_BASE=/changehealth-demo/ npm run build:static   # output in frontend/dist-pages
+```
+
+`VITE_STATIC_DEMO=true` makes `src/demo/staticApi.ts` answer every `/api/*` request in the browser using `backend/src/services/mockOptum.ts` and `backend/src/services/pdfGenerator.ts` (bundled with pdfkit's browser build). No Optum calls are made. `VITE_BASE` is the path the site is served from (`/` by default).

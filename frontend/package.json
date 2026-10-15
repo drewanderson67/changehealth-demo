@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:static": "tsc -b && VITE_STATIC_DEMO=true VITE_API_BASE_URL= vite build --outDir dist-pages",
     "lint": "eslint .",
     "test": "vitest run",
     "preview": "vite preview"
   },
   "dependencies": {
+    "pdfkit": "^0.15.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

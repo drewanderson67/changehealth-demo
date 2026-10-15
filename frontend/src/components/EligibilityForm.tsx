@@ -454,7 +454,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
           ) : allPayers.length > 0 ? (
             // Use API-fetched payers
             <select
-              required
+              required={!payerIdOverride}
               value={formData.tradingPartnerServiceId}
               onChange={(e) => {
                 setFormData({...formData, tradingPartnerServiceId: e.target.value});

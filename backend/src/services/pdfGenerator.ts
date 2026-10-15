@@ -160,14 +160,18 @@ function drawBox(doc: PDFKit.PDFDocument, boxNum: number | string, label: string
   }
 }
 
-export function generateCMS1500PDF(claimData: ClaimSubmissionRequest): Buffer {
+export function writeCMS1500PDF(
+  claimData: ClaimSubmissionRequest,
+  onChunk: (chunk: Buffer) => void,
+  onEnd?: () => void
+): void {
   const doc = new PDFDocument({
     size: [FORM_WIDTH, FORM_HEIGHT],
     margins: { top: 0, bottom: 0, left: 0, right: 0 }
   });
-  
-  const buffers: Buffer[] = [];
-  doc.on('data', buffers.push.bind(buffers));
+
+  doc.on('data', onChunk);
+  if (onEnd) doc.on('end', onEnd);
   
   // Title
   doc.fontSize(16)
@@ -261,7 +265,7 @@ export function generateCMS1500PDF(claimData: ClaimSubmissionRequest): Buffer {
     
     // 24d - Procedures/Modifiers
     doc.rect(BOX_POSITIONS['24d'].x, BOX_POSITIONS['24d'].y + yOffset, BOX_POSITIONS['24d'].width, BOX_POSITIONS['24d'].height).stroke();
-    doc.fontSize(8).text(procedureCode, BOX_POSITIONS['24d'].x + 2, BOX_POSITIONS['24d'].y + yOffset + 4);
+    doc.fontSize(8).text(`${procedureCode} ${modifiers}`.trim(), BOX_POSITIONS['24d'].x + 2, BOX_POSITIONS['24d'].y + yOffset + 4);
     
     // 24e - Diagnosis Pointer
     doc.rect(BOX_POSITIONS['24e'].x, BOX_POSITIONS['24e'].y + yOffset, BOX_POSITIONS['24e'].width, BOX_POSITIONS['24e'].height).stroke();
@@ -329,7 +333,11 @@ export function generateCMS1500PDF(claimData: ClaimSubmissionRequest): Buffer {
   drawBox(doc, '33a', 'NPI', billingNPI);
   
   doc.end();
-  
+}
+
+export function generateCMS1500PDF(claimData: ClaimSubmissionRequest): Buffer {
+  const buffers: Buffer[] = [];
+  writeCMS1500PDF(claimData, chunk => buffers.push(chunk));
   return Buffer.concat(buffers);
 }
 
