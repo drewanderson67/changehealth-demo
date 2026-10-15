@@ -1,5 +1,7 @@
 import React from 'react';
-import type { EligibilityResponse } from '../types/eligibility';
+import type { BenefitInformation, EligibilityResponse, X12Address, X12AdditionalInfo, X12Contact, X12Entity } from '../types/eligibility';
+
+type PeriodBenefits = { annual?: BenefitInformation; remaining?: BenefitInformation };
 
 interface Props {
   response: EligibilityResponse;
@@ -23,8 +25,8 @@ const SERVICE_TYPE_NAMES: Record<string, string> = {
   'UC': 'Urgent Care',
 };
 
-const formatDate = (dateStr: string): string => {
-  if (!dateStr || dateStr.length !== 8) return dateStr;
+const formatDate = (dateStr?: string): string => {
+  if (!dateStr || dateStr.length !== 8) return dateStr ?? '';
   return `${dateStr.substring(4, 6)}/${dateStr.substring(6, 8)}/${dateStr.substring(0, 4)}`;
 };
 
@@ -41,8 +43,8 @@ const formatPercent = (percent: string | number): string => {
 };
 
 // Helper to organize deductibles/OOP by service, level, and network
-function organizeFinancialBenefits(benefits: any[]) {
-  const organized: Record<string, Record<string, { inNetwork?: any; outNetwork?: any }>> = {};
+function organizeFinancialBenefits(benefits: BenefitInformation[]) {
+  const organized: Record<string, Record<string, { inNetwork?: PeriodBenefits; outNetwork?: PeriodBenefits }>> = {};
   
   benefits.forEach((benefit) => {
     // Create a consistent service key - sort codes for grouping similar services
@@ -75,8 +77,8 @@ function organizeFinancialBenefits(benefits: any[]) {
 }
 
 // Helper to organize copays/coinsurance by service and network
-function organizeCostSharing(benefits: any[]) {
-  const organized: Record<string, { inNetwork?: any[]; outNetwork?: any[] }> = {};
+function organizeCostSharing(benefits: BenefitInformation[]) {
+  const organized: Record<string, { inNetwork?: BenefitInformation[]; outNetwork?: BenefitInformation[] }> = {};
   
   benefits.forEach((benefit) => {
     // Create a consistent service key - sort codes for grouping similar services
@@ -99,7 +101,7 @@ function organizeCostSharing(benefits: any[]) {
 }
 
 // Helper component to display key-value pairs
-const KeyValueDisplay = ({ label, value, className = '' }: { label: string; value: any; className?: string }) => {
+const KeyValueDisplay = ({ label, value, className = '' }: { label: string; value: unknown; className?: string }) => {
   if (value === null || value === undefined || value === '') return null;
   return (
     <div className={`text-sm ${className}`}>
@@ -110,7 +112,7 @@ const KeyValueDisplay = ({ label, value, className = '' }: { label: string; valu
 };
 
 // Helper to render address
-const renderAddress = (address: any) => {
+const renderAddress = (address?: X12Address) => {
   if (!address) return null;
   const parts = [
     address.address1,
@@ -123,7 +125,7 @@ const renderAddress = (address: any) => {
 };
 
 // Helper to render contact information
-const renderContactInfo = (contacts: any[]) => {
+const renderContactInfo = (contacts?: X12Contact[]) => {
   if (!contacts || contacts.length === 0) return null;
   return contacts.map((contact, idx) => (
     <div key={idx} className="text-xs text-gray-600">
@@ -149,7 +151,7 @@ export default function EligibilityDetails({ response }: Props) {
   const allActiveCoverage = benefits.filter(b => b.code === '1');
   
   // Deduplicate active coverage entries
-  const activeCoverageMap = new Map<string, any>();
+  const activeCoverageMap = new Map<string, BenefitInformation>();
   allActiveCoverage.forEach((coverage) => {
     const serviceKey = JSON.stringify({
       services: (coverage.serviceTypeCodes || []).sort(),
@@ -306,7 +308,7 @@ export default function EligibilityDetails({ response }: Props) {
         <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
           <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">Dependents</h2>
           <div className="space-y-3">
-            {dependents.map((dependent: any, idx: number) => (
+            {dependents.map((dependent, idx: number) => (
               <div key={idx} className="p-3 bg-purple-50 rounded border border-purple-200">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                   {dependent.firstName && dependent.lastName && (
@@ -424,7 +426,7 @@ export default function EligibilityDetails({ response }: Props) {
                     {coverage.benefitsRelatedEntities && coverage.benefitsRelatedEntities.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-green-300">
                         <p className="text-xs font-medium text-gray-700 mb-1">Related Entities:</p>
-                        {coverage.benefitsRelatedEntities.map((entity: any, eIdx: number) => (
+                        {coverage.benefitsRelatedEntities.map((entity: X12Entity, eIdx: number) => (
                           <div key={eIdx} className="text-xs text-gray-600 ml-2">
                             {entity.entityName && <span>{entity.entityName}</span>}
                             {entity.entityIdentifier && <span className="ml-1">({entity.entityIdentifier})</span>}
@@ -439,7 +441,7 @@ export default function EligibilityDetails({ response }: Props) {
                     {coverage.additionalInformation && coverage.additionalInformation.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-green-300">
                         <p className="text-xs font-medium text-gray-700 mb-1">Additional Information:</p>
-                        {coverage.additionalInformation.map((info: any, iIdx: number) => (
+                        {coverage.additionalInformation.map((info: X12AdditionalInfo, iIdx: number) => (
                           <p key={iIdx} className="text-xs text-gray-600 ml-2">• {info.description}</p>
                         ))}
                       </div>
@@ -478,7 +480,7 @@ export default function EligibilityDetails({ response }: Props) {
                   {pcp.benefitsRelatedEntities && pcp.benefitsRelatedEntities.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-blue-300">
                       <p className="text-xs font-medium text-gray-700 mb-1">Related Entities:</p>
-                      {pcp.benefitsRelatedEntities.map((relEntity: any, eIdx: number) => (
+                      {pcp.benefitsRelatedEntities.map((relEntity: X12Entity, eIdx: number) => (
                         <div key={eIdx} className="text-xs text-gray-600 ml-2">
                           {relEntity.entityFirstname && relEntity.entityName && (
                             <span>{relEntity.entityFirstname} {relEntity.entityName}</span>
@@ -536,7 +538,7 @@ export default function EligibilityDetails({ response }: Props) {
                   const serviceNames = serviceCodes.map(code => SERVICE_TYPE_NAMES[code] || code).join(', ');
                   const displayName = serviceNames.length > 40 ? serviceNames.substring(0, 40) + '...' : serviceNames || 'All Services';
                   
-                  return Object.entries(levels).map(([level, networks]: [string, any], idx) => {
+                  return Object.entries(levels).map(([level, networks], idx) => {
                     // Collect all benefit entries for this row to show additional details
                     const allBenefits = [
                       networks.inNetwork?.annual,
@@ -567,7 +569,7 @@ export default function EligibilityDetails({ response }: Props) {
                     </tr>
                         {/* Additional details row */}
                         {allBenefits.some(b => 
-                          b?.additionalInformation?.length > 0 || 
+                          (b?.additionalInformation?.length ?? 0) > 0 || 
                           b?.eligibilityAdditionalInformation || 
                           b?.timeQualifierCode ||
                           b?.coverageLevelCode ||
@@ -576,7 +578,7 @@ export default function EligibilityDetails({ response }: Props) {
                           <tr className="bg-gray-50">
                             <td colSpan={6} className="px-3 py-2 text-xs text-gray-600">
                               <div className="space-y-1">
-                                {allBenefits.map((benefit: any, bIdx: number) => (
+                                {allBenefits.map((benefit, bIdx: number) => (
                                   benefit && (
                                     <div key={bIdx} className="pl-2 border-l-2 border-gray-300">
                                       {benefit.timeQualifier && (
@@ -591,7 +593,7 @@ export default function EligibilityDetails({ response }: Props) {
                                       {benefit.authOrCertIndicator && (
                                         <span className="mr-2">Auth/Cert: {benefit.authOrCertIndicator}</span>
                                       )}
-                                      {benefit.additionalInformation?.map((info: any, iIdx: number) => (
+                                      {benefit.additionalInformation?.map((info: X12AdditionalInfo, iIdx: number) => (
                                         <span key={iIdx} className="mr-2 text-orange-700">• {info.description}</span>
                                       ))}
                                       {benefit.eligibilityAdditionalInformation && (
@@ -648,7 +650,7 @@ export default function EligibilityDetails({ response }: Props) {
                   const serviceNames = serviceCodes.map(code => SERVICE_TYPE_NAMES[code] || code).join(', ');
                   const displayName = serviceNames.length > 40 ? serviceNames.substring(0, 40) + '...' : serviceNames || 'All Services';
                   
-                  return Object.entries(levels).map(([level, networks]: [string, any], idx) => {
+                  return Object.entries(levels).map(([level, networks], idx) => {
                     const allBenefits = [
                       networks.inNetwork?.annual,
                       networks.inNetwork?.remaining,
@@ -677,7 +679,7 @@ export default function EligibilityDetails({ response }: Props) {
                       </td>
                     </tr>
                         {allBenefits.some(b => 
-                          b?.additionalInformation?.length > 0 || 
+                          (b?.additionalInformation?.length ?? 0) > 0 || 
                           b?.eligibilityAdditionalInformation || 
                           b?.timeQualifierCode ||
                           b?.coverageLevelCode ||
@@ -686,14 +688,14 @@ export default function EligibilityDetails({ response }: Props) {
                           <tr className="bg-gray-50">
                             <td colSpan={6} className="px-3 py-2 text-xs text-gray-600">
                               <div className="space-y-1">
-                                {allBenefits.map((benefit: any, bIdx: number) => (
+                                {allBenefits.map((benefit, bIdx: number) => (
                                   benefit && (
                                     <div key={bIdx} className="pl-2 border-l-2 border-gray-300">
                                       {benefit.timeQualifier && <span className="mr-2">Period: {benefit.timeQualifier}</span>}
                                       {benefit.timeQualifierCode && <span className="mr-2">Period Code: {benefit.timeQualifierCode}</span>}
                                       {benefit.coverageLevelCode && <span className="mr-2">Level Code: {benefit.coverageLevelCode}</span>}
                                       {benefit.authOrCertIndicator && <span className="mr-2">Auth/Cert: {benefit.authOrCertIndicator}</span>}
-                                      {benefit.additionalInformation?.map((info: any, iIdx: number) => (
+                                      {benefit.additionalInformation?.map((info: X12AdditionalInfo, iIdx: number) => (
                                         <span key={iIdx} className="mr-2 text-orange-700">• {info.description}</span>
                                       ))}
                                       {benefit.eligibilityAdditionalInformation && (
@@ -744,16 +746,16 @@ export default function EligibilityDetails({ response }: Props) {
                   
                   // Get unique amounts for display
                   const inNetworkAmounts = networks.inNetwork 
-                    ? [...new Set(networks.inNetwork.map((c: any) => formatCurrency(c.benefitAmount || 0)))]
+                    ? [...new Set(networks.inNetwork.map((c) => formatCurrency(c.benefitAmount || 0)))]
                     : [];
                   const outNetworkAmounts = networks.outNetwork 
-                    ? [...new Set(networks.outNetwork.map((c: any) => formatCurrency(c.benefitAmount || 0)))]
+                    ? [...new Set(networks.outNetwork.map((c) => formatCurrency(c.benefitAmount || 0)))]
                     : [];
                   
-                  const hasAdditionalInfo = allCopays.some((c: any) => 
-                    c?.additionalInformation?.length > 0 || 
+                  const hasAdditionalInfo = allCopays.some((c) => 
+                    (c?.additionalInformation?.length ?? 0) > 0 || 
                     c?.eligibilityAdditionalInformation ||
-                    c?.eligibilityAdditionalInformationList?.length > 0 ||
+                    (c?.eligibilityAdditionalInformationList?.length ?? 0) > 0 ||
                     c?.authOrCertIndicator ||
                     c?.coverageLevelCode ||
                     c?.coverageLevel
@@ -788,8 +790,8 @@ export default function EligibilityDetails({ response }: Props) {
                         <tr className="bg-gray-50">
                           <td colSpan={3} className="px-3 py-2 text-xs text-gray-600">
                             <div className="space-y-2">
-                              {allCopays.map((copay: any, cIdx: number) => (
-                                copay && (copay.additionalInformation?.length > 0 || copay.eligibilityAdditionalInformation || copay.eligibilityAdditionalInformationList?.length > 0) && (
+                              {allCopays.map((copay, cIdx: number) => (
+                                copay && ((copay.additionalInformation?.length ?? 0) > 0 || copay.eligibilityAdditionalInformation || (copay.eligibilityAdditionalInformationList?.length ?? 0) > 0) && (
                                   <div key={cIdx} className="pl-2 border-l-2 border-gray-300">
                                     <div className="flex items-center gap-2 mb-1">
                                       {copay.coverageLevel && <span className="font-medium">Level: {copay.coverageLevel}</span>}
@@ -801,7 +803,7 @@ export default function EligibilityDetails({ response }: Props) {
                                         </span>
                                       )}
                                     </div>
-                                    {copay.additionalInformation?.map((info: any, iIdx: number) => (
+                                    {copay.additionalInformation?.map((info: X12AdditionalInfo, iIdx: number) => (
                                       <div key={iIdx} className="text-orange-700">• {info.description}</div>
                                     ))}
                                     {copay.eligibilityAdditionalInformation && (
@@ -809,7 +811,7 @@ export default function EligibilityDetails({ response }: Props) {
                                         Eligibility: {copay.eligibilityAdditionalInformation.codeListQualifierCode} - {copay.eligibilityAdditionalInformation.industryCode}
                                       </div>
                                     )}
-                                    {copay.eligibilityAdditionalInformationList?.map((info: any, iIdx: number) => (
+                                    {copay.eligibilityAdditionalInformationList?.map((info: X12AdditionalInfo, iIdx: number) => (
                                       <div key={iIdx} className="text-gray-500 text-xs mt-1">
                                         {info.codeListQualifierCode} - {info.industryCode}
                                       </div>
@@ -856,16 +858,16 @@ export default function EligibilityDetails({ response }: Props) {
                   
                   // Get unique percentages for display
                   const inNetworkPercents = networks.inNetwork 
-                    ? [...new Set(networks.inNetwork.map((c: any) => formatPercent(c.benefitPercent || 0)))]
+                    ? [...new Set(networks.inNetwork.map((c) => formatPercent(c.benefitPercent || 0)))]
                     : [];
                   const outNetworkPercents = networks.outNetwork 
-                    ? [...new Set(networks.outNetwork.map((c: any) => formatPercent(c.benefitPercent || 0)))]
+                    ? [...new Set(networks.outNetwork.map((c) => formatPercent(c.benefitPercent || 0)))]
                     : [];
                   
-                  const hasAdditionalInfo = allCoinsurance.some((c: any) => 
-                    c?.additionalInformation?.length > 0 || 
+                  const hasAdditionalInfo = allCoinsurance.some((c) => 
+                    (c?.additionalInformation?.length ?? 0) > 0 || 
                     c?.eligibilityAdditionalInformation ||
-                    c?.eligibilityAdditionalInformationList?.length > 0 ||
+                    (c?.eligibilityAdditionalInformationList?.length ?? 0) > 0 ||
                     c?.authOrCertIndicator ||
                     c?.coverageLevelCode ||
                     c?.coverageLevel
@@ -900,8 +902,8 @@ export default function EligibilityDetails({ response }: Props) {
                         <tr className="bg-gray-50">
                           <td colSpan={3} className="px-3 py-2 text-xs text-gray-600">
                             <div className="space-y-2">
-                              {allCoinsurance.map((coinsurance: any, cIdx: number) => (
-                                coinsurance && (coinsurance.additionalInformation?.length > 0 || coinsurance.eligibilityAdditionalInformation || coinsurance.eligibilityAdditionalInformationList?.length > 0) && (
+                              {allCoinsurance.map((coinsurance, cIdx: number) => (
+                                coinsurance && ((coinsurance.additionalInformation?.length ?? 0) > 0 || coinsurance.eligibilityAdditionalInformation || (coinsurance.eligibilityAdditionalInformationList?.length ?? 0) > 0) && (
                                   <div key={cIdx} className="pl-2 border-l-2 border-gray-300">
                                     <div className="flex items-center gap-2 mb-1">
                                       {coinsurance.coverageLevel && <span className="font-medium">Level: {coinsurance.coverageLevel}</span>}
@@ -913,7 +915,7 @@ export default function EligibilityDetails({ response }: Props) {
                                         </span>
                                       )}
                                     </div>
-                                    {coinsurance.additionalInformation?.map((info: any, iIdx: number) => (
+                                    {coinsurance.additionalInformation?.map((info: X12AdditionalInfo, iIdx: number) => (
                                       <div key={iIdx} className="text-orange-700">• {info.description}</div>
                                     ))}
                                     {coinsurance.eligibilityAdditionalInformation && (
@@ -921,7 +923,7 @@ export default function EligibilityDetails({ response }: Props) {
                                         Eligibility: {coinsurance.eligibilityAdditionalInformation.codeListQualifierCode} - {coinsurance.eligibilityAdditionalInformation.industryCode}
                                       </div>
                                     )}
-                                    {coinsurance.eligibilityAdditionalInformationList?.map((info: any, iIdx: number) => (
+                                    {coinsurance.eligibilityAdditionalInformationList?.map((info: X12AdditionalInfo, iIdx: number) => (
                                       <div key={iIdx} className="text-gray-500 text-xs mt-1">
                                         {info.codeListQualifierCode} - {info.industryCode}
                                       </div>
@@ -980,7 +982,7 @@ export default function EligibilityDetails({ response }: Props) {
                     {payor.benefitsRelatedEntities && payor.benefitsRelatedEntities.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-yellow-300">
                         <p className="text-xs font-medium text-gray-700 mb-1">Related Entities:</p>
-                        {payor.benefitsRelatedEntities.map((relEntity: any, eIdx: number) => (
+                        {payor.benefitsRelatedEntities.map((relEntity: X12Entity, eIdx: number) => (
                           <div key={eIdx} className="text-xs text-gray-600 ml-2">
                             {relEntity.entityName && <span>{relEntity.entityName}</span>}
                             {relEntity.entityIdentifier && <span className="ml-1">({relEntity.entityIdentifier})</span>}
@@ -1026,7 +1028,7 @@ export default function EligibilityDetails({ response }: Props) {
                         </div>
                       </div>
                     )}
-                    {lim.additionalInformation?.map((info: any, i: number) => (
+                    {lim.additionalInformation?.map((info: X12AdditionalInfo, i: number) => (
                       <p key={i} className="text-xs text-gray-700">• {info.description}</p>
                     ))}
                     {lim.headerLoopIdentifierCode && (

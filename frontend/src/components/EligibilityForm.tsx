@@ -65,7 +65,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
     loading: boolean;
     result: PayerLookupResult | null;
     error: string | null;
-    optumApiRequest: { url: string; method: string; params: any } | null;
+    optumApiRequest: { url: string; method: string; params: unknown } | null;
   }>({
     loading: false,
     result: null,
@@ -81,9 +81,9 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
   const [payersApiRequest, setPayersApiRequest] = useState<{
     endpoint: string;
     method: string;
-    body: any;
+    body: unknown;
   } | null>(null);
-  const [payersApiResponse, setPayersApiResponse] = useState<any>(null);
+  const [payersApiResponse, setPayersApiResponse] = useState<Record<string, unknown> | null>(null);
   const [payerIdOverride, setPayerIdOverride] = useState('');
 
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,7 +108,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
             setAllPayers(cachedPayers.payers || []);
             return;
           }
-        } catch (e) {
+        } catch {
           console.log('Failed to parse cached payers, fetching fresh list');
         }
       }
@@ -165,7 +165,8 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
       console.log(`✅ Loaded ${payers.length} payers from CSV export`);
       setPayersError(null); // Clear any previous errors
       
-    } catch (error: any) {
+    } catch (caught) {
+      const error = caught instanceof Error ? caught : new Error(String(caught));
       console.error('Failed to export payers:', error.message);
       
       // Parse error to get Optum API request details
@@ -199,6 +200,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
   // Load payers list on mount and when environment changes
   useEffect(() => {
     loadPayers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [environment, retryCount]);
 
   // Update form data when environment changes
@@ -281,7 +283,8 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
         
         // Extract Optum API request details
         const optumApiRequest = result._optumApiRequest || null;
-        const { _optumApiRequest, ...responseData } = result;
+        const responseData = { ...result };
+        delete responseData._optumApiRequest;
         
         setPayerLookup({ 
           loading: false, 
@@ -289,7 +292,8 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
           error: null, 
           optumApiRequest 
         });
-      } catch (error: any) {
+      } catch (caught) {
+      const error = caught instanceof Error ? caught : new Error(String(caught));
         // Try to parse error message to extract Optum API details
         let errorDetails;
         try {
@@ -326,7 +330,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
     
     // Build request according to Optum Eligibility V3 API spec
     // According to docs: only controlNumber and subscriber are required
-    const request: any = {
+    const request: EligibilityRequest = {
       controlNumber: controlNumber,
       tradingPartnerServiceId: (payerIdOverride || formData.tradingPartnerServiceId).substring(0, 80),
       subscriber: {
@@ -376,7 +380,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
     console.log('Looking for payerId:', payerIdOverride || formData.tradingPartnerServiceId);
     
     // additionalPayerIDs is parsed as a top-level field from CSV (column 9)
-    const alternateIds = (selectedPayer as any)?.additionalPayerIDs || [];
+    const alternateIds = selectedPayer?.additionalPayerIDs || [];
     
     console.log('Selected payer name:', selectedPayer?.payerPlanName);
     console.log('Primary payer ID:', payerIdOverride || formData.tradingPartnerServiceId);
@@ -497,7 +501,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
           {/* Show additional payer IDs when a payer is selected */}
           {formData.tradingPartnerServiceId && !payerIdOverride && (() => {
             const selectedPayer = allPayers.find(p => p.payerId === formData.tradingPartnerServiceId);
-            const additionalIds = (selectedPayer as any)?.additionalPayerIDs || [];
+            const additionalIds = selectedPayer?.additionalPayerIDs || [];
             
             if (additionalIds.length > 0) {
               const reversedIds = [...additionalIds].reverse();

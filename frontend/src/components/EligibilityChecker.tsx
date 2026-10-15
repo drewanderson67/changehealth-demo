@@ -40,7 +40,7 @@ export default function EligibilityChecker({
     // Try alternate IDs in reverse order first (last to first), then primary
     const reversedAlternates = [...(alternatePayerIds || [])].reverse();
     const payerIdsToTry = [...reversedAlternates, data.tradingPartnerServiceId];
-    let lastError: any = null;
+    let lastError: Error | null = null;
 
     for (const payerId of payerIdsToTry) {
       if (!payerId) continue;
@@ -66,7 +66,7 @@ export default function EligibilityChecker({
         
         // Check if response has AAA errors (T4, etc.) - treat as failure and try next ID
         if (result.errors && result.errors.length > 0) {
-          const errorMsg = result.errors.map((e: any) => `${e.code}: ${e.description}`).join(', ');
+          const errorMsg = result.errors.map((e) => `${e.code}: ${e.description}`).join(', ');
           console.log(`✗ Response has errors with payer ID: ${payerId}`, errorMsg);
           
           // Log failure with response
@@ -93,14 +93,15 @@ export default function EligibilityChecker({
         setLastRequest(requestWithPayerId);
         setLoading(false);
         return;
-      } catch (err: any) {
+      } catch (caught) {
+        const err = caught instanceof Error ? caught : new Error(String(caught));
         console.log(`✗ Failed with payer ID: ${payerId}`, err.message);
         lastError = err;
         
         // Log failure (network/API error)
         setAttemptLogs(prev => prev.map(log => 
           log.payerId === payerId && log.timestamp === timestamp
-            ? { ...log, status: 'failed' as const, error: err.message, response: err.response }
+            ? { ...log, status: 'failed' as const, error: err.message, response: (caught as { response?: EligibilityResponse }).response }
             : log
         ));
       }

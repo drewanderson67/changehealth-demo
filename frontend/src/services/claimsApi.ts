@@ -1,6 +1,6 @@
 import type { ClaimSubmissionRequest, ClaimResponse } from '../types/claims';
 import type { Environment } from '../types/eligibility';
-import { readErrorBody } from './http';
+import { readErrorBody, fetchWithRetry } from './http';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:9001';
 
@@ -62,7 +62,7 @@ export async function validateClaim(
     }, null, 2));
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/claims/validate`, {
+  const response = await fetchWithRetry(`${API_BASE_URL}/api/claims/validate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -127,7 +127,7 @@ export async function submitClaim(
 export async function generateClaimPDF(
   data: ClaimSubmissionRequest
 ): Promise<Blob> {
-  const response = await fetch(`${API_BASE_URL}/api/claims/generate-pdf`, {
+  const response = await fetchWithRetry(`${API_BASE_URL}/api/claims/generate-pdf`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ claimData: data })

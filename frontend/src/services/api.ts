@@ -1,10 +1,10 @@
 import type { EligibilityRequest, EligibilityResponse, Environment } from '../types/eligibility';
-import { readErrorBody } from './http';
+import { readErrorBody, fetchWithRetry } from './http';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:9001';
 
 export async function getBackendStatus(): Promise<{ mock: boolean }> {
-  const response = await fetch(`${API_BASE_URL}/api/status`);
+  const response = await fetchWithRetry(`${API_BASE_URL}/api/status`);
   if (!response.ok) throw new Error(`Status check failed: ${response.status}`);
   return response.json();
 }
@@ -13,7 +13,7 @@ export async function checkEligibility(
   data: EligibilityRequest,
   environment?: Environment
 ): Promise<EligibilityResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/eligibility/check-eligibility`, {
+  const response = await fetchWithRetry(`${API_BASE_URL}/api/eligibility/check-eligibility`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -60,7 +60,7 @@ export interface PayerLookupResult {
   _optumApiRequest?: {
     url: string;
     method: string;
-    params: any;
+    params: unknown;
   };
 }
 
@@ -74,7 +74,7 @@ export async function lookupPayer(
     wildcardSearch: 'No'
   };
 
-  const response = await fetch(`${API_BASE_URL}/api/eligibility/lookup-payer`, {
+  const response = await fetchWithRetry(`${API_BASE_URL}/api/eligibility/lookup-payer`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -140,6 +140,7 @@ export interface Payer {
   dentalPayerId?: string | null;
   payerPlanAlias?: string | null;
   lastUpdated?: string; // date string from API response
+  additionalPayerIDs?: string[]; // top-level column in the CSV export
 }
 
 export interface AllPayersResult {
@@ -154,7 +155,7 @@ export interface AllPayersResult {
   _optumApiRequest?: {
     url: string;
     method: string;
-    params: any;
+    params: unknown;
   };
 }
 
@@ -169,7 +170,7 @@ export async function getAllPayers(
     sort?: string[];
   }
 ): Promise<AllPayersResult> {
-  const response = await fetch(`${API_BASE_URL}/api/eligibility/get-all-payers`, {
+  const response = await fetchWithRetry(`${API_BASE_URL}/api/eligibility/get-all-payers`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -206,7 +207,7 @@ export interface ExportPayersResult {
   _optumApiRequest?: {
     url: string;
     method: string;
-    params: any;
+    params: unknown;
   };
 }
 
@@ -222,7 +223,7 @@ export async function exportPayerList(
     status?: string;
   }
 ): Promise<ExportPayersResult> {
-  const response = await fetch(`${API_BASE_URL}/api/eligibility/export-payers`, {
+  const response = await fetchWithRetry(`${API_BASE_URL}/api/eligibility/export-payers`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -263,7 +264,7 @@ export function parseCsvToPayers(csv: string): Payer[] {
   
   for (let i = 1; i < lines.length; i++) {
     const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-    const payer: any = {};
+    const payer: Record<string, string | string[]> = {};
     
     headers.forEach((header, index) => {
       const value = values[index];
@@ -277,7 +278,7 @@ export function parseCsvToPayers(csv: string): Payer[] {
       }
     });
     
-    payers.push(payer);
+    payers.push(payer as Payer);
   }
   
   return payers;
