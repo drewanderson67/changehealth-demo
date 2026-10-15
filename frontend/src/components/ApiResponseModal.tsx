@@ -62,12 +62,12 @@ export default function ApiResponseModal({ isOpen, onClose, title, request, resp
                 <h3 className="text-lg font-semibold text-blue-700">Request</h3>
                 <button
                   onClick={() => copyToClipboard(JSON.stringify(request, null, 2), 'Request')}
-                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded-sm hover:bg-blue-700"
                 >
                   Copy Request
                 </button>
               </div>
-              <div className="bg-gray-900 text-blue-400 p-4 rounded overflow-auto">
+              <div className="bg-gray-900 text-blue-400 p-4 rounded-sm overflow-auto">
                 <pre className="text-xs font-mono whitespace-pre-wrap">
                   {JSON.stringify(request, null, 2)}
                 </pre>
@@ -82,12 +82,12 @@ export default function ApiResponseModal({ isOpen, onClose, title, request, resp
                 <h3 className="text-lg font-semibold text-green-700">Response</h3>
                 <button
                   onClick={() => copyToClipboard(JSON.stringify(response, null, 2), 'Response')}
-                  className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+                  className="px-3 py-1 text-sm bg-green-600 text-white rounded-sm hover:bg-green-700"
                 >
                   Copy Response
                 </button>
               </div>
-              <div className="bg-gray-900 text-green-400 p-4 rounded overflow-auto">
+              <div className="bg-gray-900 text-green-400 p-4 rounded-sm overflow-auto">
                 <pre className="text-xs font-mono whitespace-pre-wrap">
                   {JSON.stringify(response, null, 2)}
                 </pre>
@@ -102,12 +102,12 @@ export default function ApiResponseModal({ isOpen, onClose, title, request, resp
                 <h3 className="text-lg font-semibold text-red-700">Error</h3>
                 <button
                   onClick={() => copyToClipboard(error, 'Error')}
-                  className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+                  className="px-3 py-1 text-sm bg-red-600 text-white rounded-sm hover:bg-red-700"
                 >
                   Copy Error
                 </button>
               </div>
-              <div className="bg-gray-900 text-red-400 p-4 rounded overflow-auto">
+              <div className="bg-gray-900 text-red-400 p-4 rounded-sm overflow-auto">
                 <pre className="text-xs font-mono whitespace-pre-wrap">
                   {error}
                 </pre>
@@ -120,7 +120,7 @@ export default function ApiResponseModal({ isOpen, onClose, title, request, resp
         <div className="p-4 border-t bg-gray-50 flex justify-end">
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+            className="px-6 py-2 bg-gray-600 text-white rounded-sm hover:bg-gray-700"
           >
             Close
           </button>

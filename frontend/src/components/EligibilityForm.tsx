@@ -199,6 +199,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
 
   // Load payers list on mount and when environment changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset when inputs change
     loadPayers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [environment, retryCount]);
@@ -212,6 +213,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
     const savedPayerId = localStorage.getItem(savedPayerKey);
     
     if (savedPayerId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset when inputs change
       setFormData({
         ...defaultData,
         tradingPartnerServiceId: savedPayerId
@@ -266,6 +268,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
     
     // Reset if empty
     if (!payerId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset when inputs change
       setPayerLookup({ loading: false, result: null, error: null, optumApiRequest: null });
       return;
     }
@@ -391,10 +394,10 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl mx-auto p-6 bg-white rounded-lg shadow">
+    <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl mx-auto p-6 bg-white rounded-lg shadow-sm">
       <h2 className="text-2xl font-bold">Eligibility Check</h2>
       
-      <div className="space-y-4 border p-4 rounded">
+      <div className="space-y-4 border p-4 rounded-sm">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">Payer</h3>
           <button
@@ -418,7 +421,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
           ) : payersError ? (
             // Show error if API call failed
             <div className="space-y-2">
-              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">
+              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-sm p-3">
                 <div className="font-semibold mb-1">Failed to load payer list</div>
                 <div className="text-xs">{payersError}</div>
                 {payersError.includes('401') && (
@@ -434,7 +437,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
                       setRetryCount(prev => prev + 1);
                       loadPayers(true); // Clear cache and retry
                     }}
-                    className="px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                    className="px-3 py-2 bg-blue-600 text-white text-sm rounded-sm hover:bg-blue-700"
                     disabled={loadingPayers}
                   >
                     {loadingPayers ? 'Loading...' : 'Retry'}
@@ -443,7 +446,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
                     <button
                       type="button"
                       onClick={() => setShowPayerModal(true)}
-                      className="px-3 py-2 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"
+                      className="px-3 py-2 bg-gray-600 text-white text-sm rounded-sm hover:bg-gray-700"
                     >
                       View API Request/Response
                     </button>
@@ -459,7 +462,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
               onChange={(e) => {
                 setFormData({...formData, tradingPartnerServiceId: e.target.value});
               }}
-              className="w-full p-2 border rounded font-mono text-sm"
+              className="w-full p-2 border rounded-sm font-mono text-sm"
             >
               <option value="">Name                                              | Payer ID</option>
               {allPayers.map((payer, index) => {
@@ -489,7 +492,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
               placeholder="Leave empty to use dropdown selection"
               value={payerIdOverride}
               onChange={(e) => setPayerIdOverride(e.target.value)}
-              className="w-full p-2 border rounded text-sm"
+              className="w-full p-2 border rounded-sm text-sm"
             />
             {payerIdOverride && (
               <div className="text-xs text-blue-600 mt-1">
@@ -506,7 +509,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
             if (additionalIds.length > 0) {
               const reversedIds = [...additionalIds].reverse();
               return (
-                <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded">
+                <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-sm">
                   <div className="text-xs font-semibold text-gray-700 mb-1">
                     Will try these payer IDs in order (reverse of CSV list):
                   </div>
@@ -526,7 +529,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
         </div>
       </div>
 
-      <div className="space-y-4 border p-4 rounded">
+      <div className="space-y-4 border p-4 rounded-sm">
         <h3 className="font-semibold">
           Provider
           <span className="text-xs text-gray-500 ml-2">(Optional)</span>
@@ -536,7 +539,7 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
           <select
             value={selectedProviderValue}
             onChange={(e) => handleProviderPresetChange(e.target.value)}
-            className="w-full p-2 border rounded mt-1"
+            className="w-full p-2 border rounded-sm mt-1"
           >
             <option value={CUSTOM_PROVIDER_OPTION}>Custom provider</option>
             {PROVIDER_OPTIONS.map((option) => (
@@ -550,25 +553,25 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
           placeholder="Organization Name (optional)"
           value={formData.providerOrgName}
           onChange={(e) => setFormData({...formData, providerOrgName: e.target.value})}
-          className="w-full p-2 border rounded"
+          className="w-full p-2 border rounded-sm"
         />
         <input
           placeholder="NPI - 10 digits (optional)"
           pattern="\d{10}"
           value={formData.providerNPI}
           onChange={(e) => setFormData({...formData, providerNPI: e.target.value})}
-          className="w-full p-2 border rounded"
+          className="w-full p-2 border rounded-sm"
         />
       </div>
 
-      <div className="space-y-4 border p-4 rounded">
+      <div className="space-y-4 border p-4 rounded-sm">
         <h3 className="font-semibold">Patient</h3>
         <input
           required
           placeholder="Member ID"
           value={formData.memberId}
           onChange={(e) => setFormData({...formData, memberId: e.target.value})}
-          className="w-full p-2 border rounded"
+          className="w-full p-2 border rounded-sm"
         />
         <div className="grid grid-cols-2 gap-4">
           <input
@@ -576,14 +579,14 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
             placeholder="First Name"
             value={formData.firstName}
             onChange={(e) => setFormData({...formData, firstName: e.target.value})}
-            className="p-2 border rounded"
+            className="p-2 border rounded-sm"
           />
           <input
             required
             placeholder="Last Name"
             value={formData.lastName}
             onChange={(e) => setFormData({...formData, lastName: e.target.value})}
-            className="p-2 border rounded"
+            className="p-2 border rounded-sm"
           />
         </div>
         <div className="grid grid-cols-2 gap-4">
@@ -592,13 +595,13 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
             type="date"
             value={formData.dateOfBirth}
             onChange={(e) => setFormData({...formData, dateOfBirth: e.target.value})}
-            className="p-2 border rounded"
+            className="p-2 border rounded-sm"
           />
           <select
             required
             value={formData.gender}
             onChange={(e) => setFormData({...formData, gender: e.target.value as 'M' | 'F'})}
-            className="p-2 border rounded"
+            className="p-2 border rounded-sm"
           >
             <option value="M">Male</option>
             <option value="F">Female</option>
@@ -608,20 +611,20 @@ export default function EligibilityForm({ onSubmit, loading, environment }: Prop
           placeholder="Group Number (optional)"
           value={formData.groupNumber}
           onChange={(e) => setFormData({...formData, groupNumber: e.target.value})}
-          className="w-full p-2 border rounded"
+          className="w-full p-2 border rounded-sm"
         />
         <input
           placeholder="SSN (optional)"
           value={formData.ssn}
           onChange={(e) => setFormData({...formData, ssn: e.target.value})}
-          className="w-full p-2 border rounded"
+          className="w-full p-2 border rounded-sm"
         />
       </div>
 
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-blue-600 text-white py-3 rounded hover:bg-blue-700 disabled:bg-gray-400"
+        className="w-full bg-blue-600 text-white py-3 rounded-sm hover:bg-blue-700 disabled:bg-gray-400"
       >
         {loading ? 'Checking...' : 'Check Eligibility'}
       </button>

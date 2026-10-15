@@ -1207,6 +1207,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
   // cancelled safely, and allowing edits/re-submission could hide an accepted
   // claim or create a duplicate.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset when inputs change
     setResponse(null);
     setError(null);
     setLastRequest(null);
@@ -1226,6 +1227,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
   // user changes environments.
   useEffect(() => {
     if (environment !== 'sandbox') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset when inputs change
       setFormData((previous) => (
         isOptumSandboxFixtureData(previous) ? createInitialFormData() : previous
       ));
@@ -1611,7 +1613,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
           />
           
           {/* Usage Indicator and Form Controls */}
-          <div className="mt-2 p-4 bg-gray-50 border border-gray-300 rounded">
+          <div className="mt-2 p-4 bg-gray-50 border border-gray-300 rounded-sm">
             <div className="flex items-center justify-between flex-wrap gap-4">
               {/* Submit as Test Checkbox */}
               <div className="flex items-center gap-2">
@@ -1629,7 +1631,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   </span>
                 </label>
                 {!submitAsTest && (
-                  <span className="ml-2 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded font-semibold">
+                  <span className="ml-2 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-sm font-semibold">
                     LIVE MODE
                   </span>
                 )}
@@ -1640,14 +1642,14 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 <button
                   type="button"
                   onClick={loadDefaultData}
-                  className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+                  className="px-3 py-1 bg-blue-600 text-white rounded-sm text-sm hover:bg-blue-700"
                 >
                   {isOptumSandbox ? 'Load Optum Sandbox Data' : 'Load Default Data'}
                 </button>
                 <button
                   type="button"
                   onClick={clearForm}
-                  className="px-3 py-1 bg-gray-600 text-white rounded text-sm hover:bg-gray-700"
+                  className="px-3 py-1 bg-gray-600 text-white rounded-sm text-sm hover:bg-gray-700"
                 >
                   Clear Form
                 </button>
@@ -1662,7 +1664,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               )}
             </div>
             {isOptumSandbox && (
-              <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+              <div className="mt-3 rounded-sm border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
                 <span className="font-semibold">Optum sandbox exception:</span>{' '}
                 use “Load Optum Sandbox Data” before validating. Optum requires published pseudo-patient,
                 pseudo-provider, payer, and Box 26 values in this environment. These are transport-test values
@@ -1674,7 +1676,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
       )}
 
       {/* CMS 1500 Form - Single Column Layout */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
+      <div className="bg-white rounded-lg shadow-xs border border-gray-200 p-4 sm:p-6">
         <div className="space-y-4 max-w-4xl mx-auto">
           {/* Header */}
           <div className="text-center mb-6">
@@ -1693,7 +1695,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               readOnly
               disabled
               placeholder="Assigned by Optum after claim submission"
-              className={`w-full p-2 border rounded bg-gray-100 cursor-not-allowed ${OPTIONAL_FIELD_CLASS}`}
+              className={`w-full p-2 border rounded-sm bg-gray-100 cursor-not-allowed ${OPTIONAL_FIELD_CLASS}`}
             />
             <p className="mt-1 text-xs text-gray-600">
               Clearinghouse tracking only; this is not the payer-assigned claim number.
@@ -1724,7 +1726,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                     }));
                   }}
                   placeholder="Insurance company or health plan"
-                  className={`w-full p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
+                  className={`w-full p-2 border rounded-sm ${REQUIRED_FIELD_CLASS}`}
                 />
               </div>
               <div>
@@ -1737,7 +1739,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   value={formData.tradingPartnerServiceId || ''}
                   onChange={(e) => updateField(['tradingPartnerServiceId'], e.target.value)}
                   placeholder="Optum trading partner service ID"
-                  className={`w-full p-2 border rounded font-mono ${REQUIRED_FIELD_CLASS}`}
+                  className={`w-full p-2 border rounded-sm font-mono ${REQUIRED_FIELD_CLASS}`}
                 />
               </div>
             </div>
@@ -1754,7 +1756,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
             <select
               value={selectedProviderOption}
               onChange={(e) => handleProviderPresetChange(e.target.value)}
-              className={`w-full p-2 border rounded mb-2 ${OPTIONAL_FIELD_CLASS}`}
+              className={`w-full p-2 border rounded-sm mb-2 ${OPTIONAL_FIELD_CLASS}`}
             >
               <option value={CUSTOM_PROVIDER_OPTION}>-- Enter Custom Provider --</option>
               {PROVIDER_OPTIONS.map((provider) => (
@@ -1787,7 +1789,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               value={patient?.memberId || ''}
               onChange={(e) => updateField(['subscriber', 'memberId'], e.target.value)}
               maxLength={29}
-              className={`w-full p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
+              className={`w-full p-2 border rounded-sm ${REQUIRED_FIELD_CLASS}`}
             />
             <p className="mt-1 text-xs text-gray-500">
               Patient-provided member ID; always submitted as <code>subscriber.memberId</code> in this one-patient-ID workflow.
@@ -1803,14 +1805,14 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 value={patient?.lastName ?? ''}
                 onChange={(e) => updateField(['subscriber', 'lastName'], e.target.value)}
                 placeholder="Last Name"
-                className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
+                className={`p-2 border rounded-sm ${REQUIRED_FIELD_CLASS}`}
               />
               <input
                 type="text"
                 value={patient?.firstName ?? ''}
                 onChange={(e) => updateField(['subscriber', 'firstName'], e.target.value)}
                 placeholder="First Name"
-                className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
+                className={`p-2 border rounded-sm ${REQUIRED_FIELD_CLASS}`}
               />
               <input
                 type="text"
@@ -1818,14 +1820,14 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 onChange={(e) => updateField(['subscriber', 'middleName'], e.target.value)}
                 placeholder="MI"
                 maxLength={1}
-                className={`p-2 border rounded ${OPTIONAL_FIELD_CLASS}`}
+                className={`p-2 border rounded-sm ${OPTIONAL_FIELD_CLASS}`}
               />
               <input
                 type="text"
                 value={patient?.suffix ?? ''}
                 onChange={(e) => updateField(['subscriber', 'suffix'], e.target.value)}
                 placeholder="Suffix"
-                className={`p-2 border rounded ${OPTIONAL_FIELD_CLASS}`}
+                className={`p-2 border rounded-sm ${OPTIONAL_FIELD_CLASS}`}
               />
             </div>
           </div>
@@ -1838,7 +1840,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 type="date"
                 value={patient?.dateOfBirth ? formatDateForInput(patient.dateOfBirth) : ''}
                 onChange={(e) => updateField(['subscriber', 'dateOfBirth'], e.target.value)}
-                className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
+                className={`p-2 border rounded-sm ${REQUIRED_FIELD_CLASS}`}
               />
               <div className="flex items-center gap-4">
                 <span className={`text-sm font-bold ${REQUIRED_LABEL_CLASS}`}>SEX</span>
@@ -1867,7 +1869,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
           {/* Box 4 */}
           <div className="pb-3">
             <label className={`text-sm font-bold mb-2 block ${OPTIONAL_LABEL_CLASS}`}>4. INSURED'S NAME</label>
-            <div className="p-3 border border-gray-300 rounded bg-gray-50 text-sm text-gray-600">
+            <div className="p-3 border border-gray-300 rounded-sm bg-gray-50 text-sm text-gray-600">
               Same as Box 2. The patient is submitted as the subscriber, so no second policyholder name is collected.
             </div>
           </div>
@@ -1881,14 +1883,14 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 value={patient?.address?.address1 ?? ''}
                 onChange={(e) => updateField(['subscriber', 'address', 'address1'], e.target.value)}
                 placeholder="Address Line 1"
-                className={`w-full p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
+                className={`w-full p-2 border rounded-sm ${REQUIRED_FIELD_CLASS}`}
               />
               <input
                 type="text"
                 value={patient?.address?.address2 ?? ''}
                 onChange={(e) => updateField(['subscriber', 'address', 'address2'], e.target.value)}
                 placeholder="Address Line 2"
-                className={`w-full p-2 border rounded ${OPTIONAL_FIELD_CLASS}`}
+                className={`w-full p-2 border rounded-sm ${OPTIONAL_FIELD_CLASS}`}
               />
               <div className="grid grid-cols-3 gap-4">
                 <input
@@ -1896,12 +1898,12 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   value={patient?.address?.city ?? ''}
                   onChange={(e) => updateField(['subscriber', 'address', 'city'], e.target.value)}
                   placeholder="City"
-                  className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
+                  className={`p-2 border rounded-sm ${REQUIRED_FIELD_CLASS}`}
                 />
                 <select
                   value={patient?.address?.state ?? ''}
                   onChange={(e) => updateField(['subscriber', 'address', 'state'], e.target.value)}
-                  className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
+                  className={`p-2 border rounded-sm ${REQUIRED_FIELD_CLASS}`}
                 >
                   <option value="">State</option>
                   {US_STATES.map(state => (
@@ -1918,7 +1920,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   value={patient?.address?.postalCode ?? ''}
                   onChange={(e) => updateField(['subscriber', 'address', 'postalCode'], e.target.value.replace(/\D/g, '').slice(0, 9))}
                   placeholder="ZIP Code"
-                  className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
+                  className={`p-2 border rounded-sm ${REQUIRED_FIELD_CLASS}`}
                 />
               </div>
               <input
@@ -1930,7 +1932,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   updateField(['subscriber', 'contactInformation', 'phoneNumber'], digits);
                 }}
                 placeholder="Telephone"
-                className={`w-full p-2 border rounded ${OPTIONAL_FIELD_CLASS}`}
+                className={`w-full p-2 border rounded-sm ${OPTIONAL_FIELD_CLASS}`}
               />
             </div>
           </div>
@@ -1938,7 +1940,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
           {/* Box 6 */}
           <div className="pb-3">
             <label className={`text-sm font-bold mb-2 block ${OPTIONAL_LABEL_CLASS}`}>6. PATIENT RELATIONSHIP TO INSURED</label>
-            <div className="p-3 border border-gray-300 rounded bg-gray-50 text-sm text-gray-600">
+            <div className="p-3 border border-gray-300 rounded-sm bg-gray-50 text-sm text-gray-600">
               Not separately collected. A patient with a payer-recognized member ID is submitted as the subscriber for claim purposes.
             </div>
           </div>
@@ -1946,7 +1948,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
           {/* Box 7 */}
           <div className="pb-3">
             <label className={`text-sm font-bold mb-2 block ${OPTIONAL_LABEL_CLASS}`}>7. INSURED'S ADDRESS</label>
-            <div className="p-3 border border-gray-300 rounded bg-gray-50 text-sm text-gray-600">
+            <div className="p-3 border border-gray-300 rounded-sm bg-gray-50 text-sm text-gray-600">
               Same as Box 5. The patient address is submitted as the subscriber address.
             </div>
           </div>
@@ -1967,20 +1969,20 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               <input 
                 type="text" 
                 placeholder="Last Name" 
-                className={`p-2 border rounded ${formData.claimInformation?.hasOtherHealthBenefitPlan === false ? NOT_APPLICABLE_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
+                className={`p-2 border rounded-sm ${formData.claimInformation?.hasOtherHealthBenefitPlan === false ? NOT_APPLICABLE_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
                 disabled={formData.claimInformation?.hasOtherHealthBenefitPlan === false} 
               />
               <input 
                 type="text" 
                 placeholder="First Name" 
-                className={`p-2 border rounded ${formData.claimInformation?.hasOtherHealthBenefitPlan === false ? NOT_APPLICABLE_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
+                className={`p-2 border rounded-sm ${formData.claimInformation?.hasOtherHealthBenefitPlan === false ? NOT_APPLICABLE_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
                 disabled={formData.claimInformation?.hasOtherHealthBenefitPlan === false} 
               />
               <input 
                 type="text" 
                 placeholder="MI" 
                 maxLength={1} 
-                className={`p-2 border rounded ${formData.claimInformation?.hasOtherHealthBenefitPlan === false ? NOT_APPLICABLE_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
+                className={`p-2 border rounded-sm ${formData.claimInformation?.hasOtherHealthBenefitPlan === false ? NOT_APPLICABLE_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
                 disabled={formData.claimInformation?.hasOtherHealthBenefitPlan === false} 
               />
             </div>
@@ -1994,7 +1996,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
             </label>
             <input 
               type="text" 
-              className={`w-full p-2 border rounded ${formData.claimInformation?.hasOtherHealthBenefitPlan === false ? NOT_APPLICABLE_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
+              className={`w-full p-2 border rounded-sm ${formData.claimInformation?.hasOtherHealthBenefitPlan === false ? NOT_APPLICABLE_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
               disabled={formData.claimInformation?.hasOtherHealthBenefitPlan === false} 
             />
           </div>
@@ -2023,7 +2025,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
             </label>
             <input 
               type="text" 
-              className={`w-full p-2 border rounded ${formData.claimInformation?.hasOtherHealthBenefitPlan === false ? NOT_APPLICABLE_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
+              className={`w-full p-2 border rounded-sm ${formData.claimInformation?.hasOtherHealthBenefitPlan === false ? NOT_APPLICABLE_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
               disabled={formData.claimInformation?.hasOtherHealthBenefitPlan === false} 
             />
           </div>
@@ -2047,14 +2049,14 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               type="text"
               value={formData.subscriber?.groupNumber || ''}
               onChange={(e) => updateField(['subscriber', 'groupNumber'], e.target.value)}
-              className={`w-full p-2 border rounded ${OPTIONAL_FIELD_CLASS}`}
+              className={`w-full p-2 border rounded-sm ${OPTIONAL_FIELD_CLASS}`}
             />
           </div>
 
           {/* Box 11a */}
           <div className="pb-3">
             <label className={`text-sm font-bold mb-2 block ${OPTIONAL_LABEL_CLASS}`}>11a. INSURED'S DATE OF BIRTH / SEX</label>
-            <div className="p-3 border border-gray-300 rounded bg-gray-50 text-sm text-gray-600">
+            <div className="p-3 border border-gray-300 rounded-sm bg-gray-50 text-sm text-gray-600">
               Same as Box 3. The patient&apos;s date of birth and sex are submitted with the subscriber record.
             </div>
           </div>
@@ -2066,7 +2068,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               type="text"
               value="Not applicable"
               disabled
-              className={`w-full p-2 border rounded ${NOT_APPLICABLE_FIELD_CLASS}`}
+              className={`w-full p-2 border rounded-sm ${NOT_APPLICABLE_FIELD_CLASS}`}
             />
           </div>
 
@@ -2077,7 +2079,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               type="text"
               value="Not applicable"
               disabled
-              className={`w-full p-2 border rounded ${NOT_APPLICABLE_FIELD_CLASS}`}
+              className={`w-full p-2 border rounded-sm ${NOT_APPLICABLE_FIELD_CLASS}`}
             />
           </div>
 
@@ -2128,25 +2130,25 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
           {/* Box 14 */}
           <div className="pb-3">
             <label className={`text-sm font-bold mb-2 block ${NOT_APPLICABLE_LABEL_CLASS}`}>14. DATE OF CURRENT ILLNESS, INJURY, or PREGNANCY (LMP)</label>
-            <input type="text" value="Not applicable" disabled className={`w-full p-2 border rounded ${NOT_APPLICABLE_FIELD_CLASS}`} />
+            <input type="text" value="Not applicable" disabled className={`w-full p-2 border rounded-sm ${NOT_APPLICABLE_FIELD_CLASS}`} />
           </div>
 
           {/* Box 15 */}
           <div className="pb-3">
             <label className={`text-sm font-bold mb-2 block ${NOT_APPLICABLE_LABEL_CLASS}`}>15. OTHER DATE</label>
-            <input type="text" value="Not applicable" disabled className={`w-full p-2 border rounded ${NOT_APPLICABLE_FIELD_CLASS}`} />
+            <input type="text" value="Not applicable" disabled className={`w-full p-2 border rounded-sm ${NOT_APPLICABLE_FIELD_CLASS}`} />
           </div>
 
           {/* Box 16 */}
           <div className="pb-3">
             <label className={`text-sm font-bold mb-2 block ${NOT_APPLICABLE_LABEL_CLASS}`}>16. Dates patient unable to work in current occupation</label>
-            <input type="text" value="Not applicable" disabled className={`w-full p-2 border rounded ${NOT_APPLICABLE_FIELD_CLASS}`} />
+            <input type="text" value="Not applicable" disabled className={`w-full p-2 border rounded-sm ${NOT_APPLICABLE_FIELD_CLASS}`} />
           </div>
 
           {/* Box 17 */}
           <div className="pb-3">
             <label className={`text-sm font-bold mb-2 block ${NOT_APPLICABLE_LABEL_CLASS}`}>17. NAME OF REFERRING PROVIDER OR OTHER SOURCE</label>
-            <input type="text" value="Not applicable" disabled className={`w-full p-2 border rounded ${NOT_APPLICABLE_FIELD_CLASS}`} />
+            <input type="text" value="Not applicable" disabled className={`w-full p-2 border rounded-sm ${NOT_APPLICABLE_FIELD_CLASS}`} />
           </div>
 
           {/* Box 17a */}
@@ -2156,7 +2158,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               type="text"
               value="Not applicable"
               disabled
-              className={`w-full p-2 border rounded ${NOT_APPLICABLE_FIELD_CLASS}`}
+              className={`w-full p-2 border rounded-sm ${NOT_APPLICABLE_FIELD_CLASS}`}
             />
           </div>
 
@@ -2167,14 +2169,14 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               type="text"
               value="Not applicable"
               disabled
-              className={`w-full p-2 border rounded ${NOT_APPLICABLE_FIELD_CLASS}`}
+              className={`w-full p-2 border rounded-sm ${NOT_APPLICABLE_FIELD_CLASS}`}
             />
           </div>
 
           {/* Box 18 */}
           <div className="pb-3">
             <label className={`text-sm font-bold mb-2 block ${NOT_APPLICABLE_LABEL_CLASS}`}>18. Hospitalization Dates Related to Current Services</label>
-            <input type="text" value="Not applicable" disabled className={`w-full p-2 border rounded ${NOT_APPLICABLE_FIELD_CLASS}`} />
+            <input type="text" value="Not applicable" disabled className={`w-full p-2 border rounded-sm ${NOT_APPLICABLE_FIELD_CLASS}`} />
           </div>
 
           {/* Box 19 */}
@@ -2184,7 +2186,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               type="text"
               value="Not applicable"
               disabled
-              className={`w-full p-2 border rounded ${NOT_APPLICABLE_FIELD_CLASS}`}
+              className={`w-full p-2 border rounded-sm ${NOT_APPLICABLE_FIELD_CLASS}`}
             />
           </div>
 
@@ -2214,7 +2216,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                     type="text"
                     value={diagnoses[i]?.diagnosisCode || ''}
                     onChange={(e) => updateDiagnosis(i, e.target.value)}
-                    className={`w-full p-2 border rounded mt-1 ${requiredDiagnosisIndexes.has(i) ? REQUIRED_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
+                    className={`w-full p-2 border rounded-sm mt-1 ${requiredDiagnosisIndexes.has(i) ? REQUIRED_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
                   />
                 </div>
               ))}
@@ -2226,7 +2228,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 type="text"
                 value="0"
                 readOnly
-                className={`w-16 p-2 border rounded bg-gray-50 text-center ${OPTIONAL_FIELD_CLASS}`}
+                className={`w-16 p-2 border rounded-sm bg-gray-50 text-center ${OPTIONAL_FIELD_CLASS}`}
                 title="ICD-10-CM"
               />
               <span className="text-xs text-gray-500">ICD-10-CM</span>
@@ -2240,7 +2242,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               <select
                 value="1"
                 disabled
-                className={`p-2 border rounded bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
+                className={`p-2 border rounded-sm bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
               >
                 <option value="1">1 - New claim</option>
               </select>
@@ -2249,7 +2251,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 value="Not applicable"
                 disabled
                 aria-label="Original payer claim control number"
-                className={`p-2 border rounded ${NOT_APPLICABLE_FIELD_CLASS}`}
+                className={`p-2 border rounded-sm ${NOT_APPLICABLE_FIELD_CLASS}`}
               />
             </div>
           </div>
@@ -2263,13 +2265,13 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 value="N/A"
                 disabled
                 aria-label="Prior authorization qualifier"
-                className={`p-2 border rounded text-center ${NOT_APPLICABLE_FIELD_CLASS}`}
+                className={`p-2 border rounded-sm text-center ${NOT_APPLICABLE_FIELD_CLASS}`}
               />
               <input
                 type="text"
                 value="Not applicable"
                 disabled
-                className={`w-full p-2 border rounded ${NOT_APPLICABLE_FIELD_CLASS}`}
+                className={`w-full p-2 border rounded-sm ${NOT_APPLICABLE_FIELD_CLASS}`}
               />
             </div>
           </div>
@@ -2295,7 +2297,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 const requiresClia = line.professionalService?.procedureModifiers?.includes('QW') || false;
 
                 return (
-                <div key={index} className="border border-gray-300 rounded p-3 bg-white relative">
+                <div key={index} className="border border-gray-300 rounded-sm p-3 bg-white relative">
                   {effectiveServiceLines.length > 1 && (
                     <button
                       type="button"
@@ -2315,7 +2317,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         a. FROM
                         <div className="relative group inline-block">
                           <span className="text-gray-400 cursor-help text-xs">ⓘ</span>
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded-sm shadow-lg">
                             <div className="font-semibold mb-1">Date of Service (FROM)</div>
                             <div>The beginning date when the service was provided to the patient.</div>
                             <div className="absolute top-full left-2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
@@ -2326,7 +2328,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         type="date"
                         value={formatDateForInput(line.serviceDate || '')}
                         onChange={(e) => updateAllServiceDates(e.target.value.replace(/-/g, ''))}
-                        className={`w-full px-1.5 py-1.5 border rounded text-sm ${REQUIRED_FIELD_CLASS}`}
+                        className={`w-full px-1.5 py-1.5 border rounded-sm text-sm ${REQUIRED_FIELD_CLASS}`}
                       />
                     </div>
 
@@ -2336,7 +2338,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         TO
                         <div className="relative group inline-block">
                           <span className="text-gray-400 cursor-help text-xs">ⓘ</span>
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded-sm shadow-lg">
                             <div className="font-semibold mb-1">Date of Service (TO)</div>
                             <div>The ending date when the service was provided. Leave blank if same as FROM.</div>
                             <div className="absolute top-full left-2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
@@ -2347,7 +2349,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         type="date"
                         value={formatDateForInput(line.serviceDate || '')}
                         disabled
-                        className={`w-full px-1.5 py-1.5 border rounded text-sm bg-gray-100 cursor-not-allowed ${OPTIONAL_FIELD_CLASS}`}
+                        className={`w-full px-1.5 py-1.5 border rounded-sm text-sm bg-gray-100 cursor-not-allowed ${OPTIONAL_FIELD_CLASS}`}
                       />
                     </div>
 
@@ -2357,7 +2359,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         b. POS
                         <div className="relative group inline-block">
                           <span className="text-gray-400 cursor-help text-xs">ⓘ</span>
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded-sm shadow-lg">
                             <div className="font-semibold mb-1">Place of Service</div>
                             <div>2-digit code indicating where the service was performed (e.g., 11=Office, 21=Inpatient Hospital).</div>
                             <div className="absolute top-full left-2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
@@ -2369,7 +2371,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         value="10"
                         disabled
                         title="Place of service 10 — Telehealth provided in patient's home"
-                        className={`w-full p-1.5 border rounded text-sm text-center bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
+                        className={`w-full p-1.5 border rounded-sm text-sm text-center bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
                       />
                     </div>
 
@@ -2379,7 +2381,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         c. EMG
                         <div className="relative group inline-block">
                           <span className="text-gray-400 cursor-help text-xs">ⓘ</span>
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded-sm shadow-lg">
                             <div className="font-semibold mb-1">Emergency Indicator</div>
                             <div>Check if service was provided in an emergency situation.</div>
                             <div className="absolute top-full left-2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
@@ -2391,7 +2393,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                           type="checkbox"
                           checked={false}
                           disabled
-                          className={`w-4 h-4 rounded ${OPTIONAL_FIELD_CLASS}`}
+                          className={`w-4 h-4 rounded-sm ${OPTIONAL_FIELD_CLASS}`}
                         />
                       </div>
                     </div>
@@ -2402,7 +2404,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         d. CPT/HCPCS
                         <div className="relative group inline-block">
                           <span className="text-gray-400 cursor-help text-xs">ⓘ</span>
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded-sm shadow-lg">
                             <div className="font-semibold mb-1">Procedure Code</div>
                             <div>The CPT or HCPCS code identifying the medical procedure or service provided.</div>
                             <div className="absolute top-full left-2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
@@ -2412,7 +2414,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                       <select
                         value={line.professionalService?.procedureCode || ''}
                         onChange={(e) => updateServiceLineProcedure(index, e.target.value)}
-                        className={`w-full p-1.5 border rounded text-sm ${REQUIRED_FIELD_CLASS}`}
+                        className={`w-full p-1.5 border rounded-sm text-sm ${REQUIRED_FIELD_CLASS}`}
                       >
                         <option value="">Select procedure</option>
                         {line.professionalService?.procedureCode && !selectedProcedure && (
@@ -2435,7 +2437,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         Modifier
                         <div className="relative group inline-block">
                           <span className="text-gray-400 cursor-help text-xs">ⓘ</span>
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded-sm shadow-lg">
                             <div className="font-semibold mb-1">Procedure Modifier</div>
                             <div>2-digit code that provides additional information about the procedure performed.</div>
                             <div className="absolute top-full left-2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
@@ -2462,7 +2464,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         }}
                         placeholder="95 GT"
                         maxLength={11}
-                        className={`w-full p-1.5 border rounded text-sm ${OPTIONAL_FIELD_CLASS}`}
+                        className={`w-full p-1.5 border rounded-sm text-sm ${OPTIONAL_FIELD_CLASS}`}
                       />
                     </div>
 
@@ -2472,7 +2474,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         e. Dx
                         <div className="relative group inline-block">
                           <span className="text-gray-400 cursor-help text-xs">ⓘ</span>
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded-sm shadow-lg">
                             <div className="font-semibold mb-1">Diagnosis Pointer</div>
                             <div>Letter (A-L) linking this service to the corresponding diagnosis code in Box 21.</div>
                             <div className="absolute top-full left-2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
@@ -2502,7 +2504,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         }}
                         placeholder="A"
                         maxLength={4}
-                        className={`w-full p-1.5 border rounded text-sm ${REQUIRED_FIELD_CLASS}`}
+                        className={`w-full p-1.5 border rounded-sm text-sm ${REQUIRED_FIELD_CLASS}`}
                       />
                     </div>
                   </div>
@@ -2515,7 +2517,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         f. Charges
                         <div className="relative group inline-block">
                           <span className="text-gray-400 cursor-help text-xs">ⓘ</span>
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded-sm shadow-lg">
                             <div className="font-semibold mb-1">Line Item Charge Amount</div>
                             <div>The total charge amount for this specific service line before any adjustments.</div>
                             <div className="absolute top-full left-2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
@@ -2532,7 +2534,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                             updateServiceLine(index, 'professionalService.lineItemChargeAmount', cents);
                           }}
                           placeholder="0.00"
-                          className={`flex-1 p-1.5 border rounded text-sm ${REQUIRED_FIELD_CLASS}`}
+                          className={`flex-1 p-1.5 border rounded-sm text-sm ${REQUIRED_FIELD_CLASS}`}
                         />
                       </div>
                     </div>
@@ -2543,7 +2545,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         g. Units
                         <div className="relative group inline-block">
                           <span className="text-gray-400 cursor-help text-xs">ⓘ</span>
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded-sm shadow-lg">
                             <div className="font-semibold mb-1">Days or Units</div>
                             <div>The number of times the service was performed or the number of days/units billed.</div>
                             <div className="absolute top-full left-2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
@@ -2561,7 +2563,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         }}
                         placeholder="1"
                         maxLength={7}
-                        className={`w-full p-1.5 border rounded text-sm text-center ${REQUIRED_FIELD_CLASS}`}
+                        className={`w-full p-1.5 border rounded-sm text-sm text-center ${REQUIRED_FIELD_CLASS}`}
                       />
                     </div>
 
@@ -2571,7 +2573,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         h. EP
                         <div className="relative group inline-block">
                           <span className="text-gray-400 cursor-help text-xs">ⓘ</span>
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded-sm shadow-lg">
                             <div className="font-semibold mb-1">EPSDT Family Plan</div>
                             <div>Early and Periodic Screening, Diagnostic and Treatment indicator for Medicaid patients.</div>
                             <div className="absolute top-full left-2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
@@ -2593,7 +2595,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         }}
                         maxLength={1}
                         placeholder="N"
-                        className={`w-full p-1.5 border rounded text-sm text-center ${OPTIONAL_FIELD_CLASS}`}
+                        className={`w-full p-1.5 border rounded-sm text-sm text-center ${OPTIONAL_FIELD_CLASS}`}
                       />
                     </div>
 
@@ -2603,7 +2605,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         h. FP
                         <div className="relative group inline-block">
                           <span className="text-gray-400 cursor-help text-xs">ⓘ</span>
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded-sm shadow-lg">
                             <div className="font-semibold mb-1">Family Planning Indicator</div>
                             <div>Enter Y when the service is related to family planning.</div>
                           </div>
@@ -2624,7 +2626,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         }}
                         maxLength={1}
                         placeholder="N"
-                        className={`w-full p-1.5 border rounded text-sm text-center ${OPTIONAL_FIELD_CLASS}`}
+                        className={`w-full p-1.5 border rounded-sm text-sm text-center ${OPTIONAL_FIELD_CLASS}`}
                       />
                     </div>
 
@@ -2634,7 +2636,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         i. Qual
                         <div className="relative group inline-block">
                           <span className="text-gray-400 cursor-help text-xs">ⓘ</span>
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded-sm shadow-lg">
                             <div className="font-semibold mb-1">ID Qualifier</div>
                             <div>Identifies the type of provider identifier being used (typically NPI - National Provider Identifier).</div>
                             <div className="absolute top-full left-2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
@@ -2643,7 +2645,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                       </label>
                       <select
                         value="NPI"
-                        className={`w-full p-1.5 border rounded text-sm bg-gray-50 ${OPTIONAL_FIELD_CLASS}`}
+                        className={`w-full p-1.5 border rounded-sm text-sm bg-gray-50 ${OPTIONAL_FIELD_CLASS}`}
                         disabled
                       >
                         <option value="NPI">NPI</option>
@@ -2656,7 +2658,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         j. Rendering Provider ID
                         <div className="relative group inline-block">
                           <span className="text-gray-400 cursor-help text-xs">ⓘ</span>
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 bg-gray-900 text-white text-xs rounded-sm shadow-lg">
                             <div className="font-semibold mb-1">Rendering Provider NPI</div>
                             <div>The National Provider Identifier for the healthcare professional who performed the service.</div>
                             <div className="absolute top-full left-2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
@@ -2679,7 +2681,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         }}
                         placeholder="NPI (10 digits)"
                         maxLength={10}
-                        className={`w-full p-1.5 border rounded text-sm ${renderingProviderNpiIsRequired ? REQUIRED_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
+                        className={`w-full p-1.5 border rounded-sm text-sm ${renderingProviderNpiIsRequired ? REQUIRED_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
                       />
                     </div>
                   </div>
@@ -2698,7 +2700,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         }));
                       }}
                       placeholder="Rendering provider first name"
-                      className={`p-1.5 border rounded text-sm ${renderingProviderFirstNameIsRequired ? REQUIRED_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
+                      className={`p-1.5 border rounded-sm text-sm ${renderingProviderFirstNameIsRequired ? REQUIRED_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
                     />
                     <input
                       type="text"
@@ -2714,7 +2716,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         }));
                       }}
                       placeholder="Rendering provider last name"
-                      className={`p-1.5 border rounded text-sm ${renderingProviderLastNameIsRequired ? REQUIRED_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
+                      className={`p-1.5 border rounded-sm text-sm ${renderingProviderLastNameIsRequired ? REQUIRED_FIELD_CLASS : OPTIONAL_FIELD_CLASS}`}
                     />
                     <input
                       type="text"
@@ -2731,7 +2733,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                       }}
                       placeholder="Rendering taxonomy"
                       maxLength={10}
-                      className={`p-1.5 border rounded text-sm ${OPTIONAL_FIELD_CLASS}`}
+                      className={`p-1.5 border rounded-sm text-sm ${OPTIONAL_FIELD_CLASS}`}
                     />
                   </div>
                   {requiresClia && (
@@ -2756,7 +2758,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                         disabled={isOptumSandbox}
                         placeholder={isOptumSandbox ? 'Omitted for Optum canned sandbox fixture' : REPERIO_DEFAULT_CLIA_NUMBER}
                         maxLength={10}
-                        className={`w-full p-1.5 border rounded text-sm ${isOptumSandbox ? NOT_APPLICABLE_FIELD_CLASS : REQUIRED_FIELD_CLASS}`}
+                        className={`w-full p-1.5 border rounded-sm text-sm ${isOptumSandbox ? NOT_APPLICABLE_FIELD_CLASS : REQUIRED_FIELD_CLASS}`}
                       />
                     </div>
                   )}
@@ -2767,7 +2769,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 <button
                   type="button"
                   onClick={addServiceLine}
-                  className="w-full px-3 py-2 bg-[#9e32e2] text-white rounded hover:bg-[#8a2bc9] text-sm font-semibold"
+                  className="w-full px-3 py-2 bg-[#9e32e2] text-white rounded-sm hover:bg-[#8a2bc9] text-sm font-semibold"
                 >
                   + Add Service Line
                 </button>
@@ -2812,7 +2814,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   placeholder="9-digit EIN"
                   maxLength={9}
                   inputMode="numeric"
-                  className={`w-full p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
+                  className={`w-full p-2 border rounded-sm ${REQUIRED_FIELD_CLASS}`}
                 />
                 <datalist id="billing-ein-options">
                   <option value="994567305">RHMG, PLLC</option>
@@ -2834,10 +2836,10 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 type="text"
                 value={formData.claimInformation?.patientControlNumber || ''}
                 disabled
-                className={`w-full p-2 border rounded bg-amber-50 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
+                className={`w-full p-2 border rounded-sm bg-amber-50 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
               />
             ) : (
-              <div className={`flex overflow-hidden border rounded ${REQUIRED_FIELD_CLASS}`}>
+              <div className={`flex overflow-hidden border rounded-sm ${REQUIRED_FIELD_CLASS}`}>
                 <span className="flex items-center bg-gray-100 px-3 text-sm font-semibold border-r border-current">RC-</span>
                 <input
                   type="text"
@@ -2851,7 +2853,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   inputMode="numeric"
                   pattern="[1-9][0-9]{11}"
                   required
-                  className="w-full p-2 outline-none text-inherit"
+                  className="w-full p-2 outline-hidden text-inherit"
                 />
               </div>
             )}
@@ -2900,7 +2902,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 value={formatCurrency(String(sumServiceLineChargeCents(effectiveServiceLines))) || '0.00'}
                 readOnly
                 placeholder="0.00"
-                className={`w-full p-2 border rounded bg-gray-50 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
+                className={`w-full p-2 border rounded-sm bg-gray-50 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
                 title="Auto-calculated from service line charges"
               />
             </div>
@@ -2913,7 +2915,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               type="text"
               value="$0.00"
               disabled
-              className="w-full p-2 border border-gray-400 rounded bg-gray-200 text-gray-600 cursor-not-allowed"
+              className="w-full p-2 border border-gray-400 rounded-sm bg-gray-200 text-gray-600 cursor-not-allowed"
             />
           </div>
 
@@ -2941,7 +2943,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               value={physicianSignatureDate}
               onChange={(e) => setPhysicianSignatureDate(e.target.value)}
               required
-              className={`w-full p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
+              className={`w-full p-2 border rounded-sm ${REQUIRED_FIELD_CLASS}`}
             />
             <p className="mt-1 text-xs text-gray-500">Required by this form workflow; retained with the draft and not sent as an unsupported Optum request property.</p>
           </div>
@@ -2960,21 +2962,21 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   updateField(['claimInformation', 'serviceFacilityLocation', 'organizationName'], e.target.value);
                 }}
                 placeholder="Company Name"
-                className={`w-full p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
+                className={`w-full p-2 border rounded-sm ${REQUIRED_FIELD_CLASS}`}
               />
               <input
                 type="text"
                 value={formData.claimInformation?.serviceFacilityLocation?.address?.address1 || ''}
                 onChange={(e) => updateField(['claimInformation', 'serviceFacilityLocation', 'address', 'address1'], e.target.value)}
                 placeholder="Street Address"
-                className={`w-full p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
+                className={`w-full p-2 border rounded-sm ${REQUIRED_FIELD_CLASS}`}
               />
               <input
                 type="text"
                 value={formData.claimInformation?.serviceFacilityLocation?.address?.address2 || ''}
                 onChange={(e) => updateField(['claimInformation', 'serviceFacilityLocation', 'address', 'address2'], e.target.value)}
                 placeholder="Address Line 2"
-                className={`w-full p-2 border rounded ${OPTIONAL_FIELD_CLASS}`}
+                className={`w-full p-2 border rounded-sm ${OPTIONAL_FIELD_CLASS}`}
               />
               <div className="grid grid-cols-3 gap-4">
                 <input
@@ -2982,7 +2984,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   value={formData.claimInformation?.serviceFacilityLocation?.address?.city || ''}
                   onChange={(e) => updateField(['claimInformation', 'serviceFacilityLocation', 'address', 'city'], e.target.value)}
                   placeholder="City"
-                  className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
+                  className={`p-2 border rounded-sm ${REQUIRED_FIELD_CLASS}`}
                 />
                 <input
                   type="text"
@@ -2990,14 +2992,14 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   onChange={(e) => updateField(['claimInformation', 'serviceFacilityLocation', 'address', 'state'], e.target.value.toUpperCase())}
                   placeholder="State"
                   maxLength={2}
-                  className={`p-2 border rounded uppercase ${REQUIRED_FIELD_CLASS}`}
+                  className={`p-2 border rounded-sm uppercase ${REQUIRED_FIELD_CLASS}`}
                 />
                 <input
                   type="text"
                   value={formData.claimInformation?.serviceFacilityLocation?.address?.postalCode || ''}
                   onChange={(e) => updateField(['claimInformation', 'serviceFacilityLocation', 'address', 'postalCode'], e.target.value.replace(/\D/g, '').slice(0, 9))}
                   placeholder="ZIP Code"
-                  className={`p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
+                  className={`p-2 border rounded-sm ${REQUIRED_FIELD_CLASS}`}
                 />
               </div>
               <input
@@ -3011,7 +3013,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   updateField(['claimInformation', 'serviceFacilityLocation', 'npi'], e.target.value.replace(/\D/g, '').slice(0, 10));
                 }}
                 placeholder="NPI"
-                className={`w-full p-2 border rounded ${REQUIRED_FIELD_CLASS}`}
+                className={`w-full p-2 border rounded-sm ${REQUIRED_FIELD_CLASS}`}
               />
             </div>
           </div>
@@ -3025,21 +3027,21 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 value={billingOrganizationForDisplay}
                 disabled
                 placeholder="Organization Name"
-                className={`w-full p-2 border rounded bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
+                className={`w-full p-2 border rounded-sm bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
               />
               <input
                 type="text"
                 value={billingAddressForDisplay.address1}
                 disabled
                 placeholder="Address"
-                className={`w-full p-2 border rounded bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
+                className={`w-full p-2 border rounded-sm bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
               />
               <input
                 type="text"
                 value={billingAddressForDisplay.address2 || ''}
                 disabled
                 placeholder="Address Line 2"
-                className={`w-full p-2 border rounded bg-gray-100 cursor-not-allowed ${OPTIONAL_FIELD_CLASS}`}
+                className={`w-full p-2 border rounded-sm bg-gray-100 cursor-not-allowed ${OPTIONAL_FIELD_CLASS}`}
               />
               <div className="grid grid-cols-3 gap-4">
                 <input
@@ -3047,7 +3049,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   value={billingAddressForDisplay.city}
                   disabled
                   placeholder="City"
-                  className={`p-2 border rounded bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
+                  className={`p-2 border rounded-sm bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
                 />
                 <input
                   type="text"
@@ -3055,14 +3057,14 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   disabled
                   placeholder="ST"
                   maxLength={2}
-                  className={`p-2 border rounded uppercase bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
+                  className={`p-2 border rounded-sm uppercase bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
                 />
                 <input
                   type="text"
                   value={billingAddressForDisplay.postalCode || ''}
                   disabled
                   placeholder="ZIP"
-                  className={`p-2 border rounded bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
+                  className={`p-2 border rounded-sm bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
                 />
               </div>
               <div>
@@ -3071,7 +3073,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   type="text"
                   value={billingContactForDisplay?.name || ''}
                   disabled
-                  className={`w-full p-2 border rounded bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
+                  className={`w-full p-2 border rounded-sm bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
                 />
               </div>
               <div>
@@ -3083,7 +3085,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   value=""
                   disabled
                   placeholder="Not applicable"
-                  className={`w-full p-2 border rounded ${NOT_APPLICABLE_FIELD_CLASS}`}
+                  className={`w-full p-2 border rounded-sm ${NOT_APPLICABLE_FIELD_CLASS}`}
                 />
                 <p className="mt-1 text-xs text-gray-500">
                   The Optum-required submitter contact phone is configured separately and is not presented as the Box 33 telephone.
@@ -3095,7 +3097,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                 disabled
                 maxLength={10}
                 placeholder="NPI"
-                className={`w-full p-2 border rounded bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
+                className={`w-full p-2 border rounded-sm bg-gray-100 cursor-not-allowed ${REQUIRED_FIELD_CLASS}`}
               />
               <div>
                 <label className={`text-xs font-semibold block mb-1 ${OPTIONAL_LABEL_CLASS}`}>Billing contact email</label>
@@ -3103,7 +3105,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
                   type="email"
                   value={billingContactForDisplay?.email || ''}
                   disabled
-                  className={`w-full p-2 border rounded bg-gray-100 cursor-not-allowed ${OPTIONAL_FIELD_CLASS}`}
+                  className={`w-full p-2 border rounded-sm bg-gray-100 cursor-not-allowed ${OPTIONAL_FIELD_CLASS}`}
                 />
               </div>
             </div>
@@ -3165,7 +3167,7 @@ export default function ClaimForm({ environment, onEnvironmentChange }: Props) {
               </div>
             </div>
           ) : (response || error) ? (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="bg-white rounded-lg shadow-xs border border-gray-200 p-6">
               <ClaimResponseDisplay
                 request={lastRequest}
                 response={response}

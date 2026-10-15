@@ -123,8 +123,8 @@ export default function EligibilityChecker({
   return (
     <div className="flex gap-6 lg:h-[calc(100vh-200px)] relative">
       {/* Left Column - Form */}
-      <div className="flex-shrink-0 lg:w-1/2 xl:w-2/5 flex flex-col" style={{ width: showLogs ? '40%' : '50%' }}>
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 flex-1 overflow-y-auto">
+      <div className="shrink-0 lg:w-1/2 xl:w-2/5 flex flex-col" style={{ width: showLogs ? '40%' : '50%' }}>
+        <div className="bg-white rounded-lg shadow-xs border border-gray-200 p-4 sm:p-6 flex-1 overflow-y-auto">
           <EnvironmentSelector 
             environment={environment} 
             onEnvironmentChange={handleEnvironmentChange} 
@@ -157,7 +157,7 @@ export default function EligibilityChecker({
             </div>
           </div>
         ) : (response || error) ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-xs border border-gray-200 flex-1 overflow-y-auto">
             <ResponseDisplay request={lastRequest} response={response} error={error} />
           </div>
         ) : (
@@ -175,7 +175,7 @@ export default function EligibilityChecker({
 
       {/* Right Column - Attempt Logs */}
       <div 
-        className={`flex flex-col bg-white rounded-lg shadow-sm border border-gray-200 transition-all duration-300 ${
+        className={`flex flex-col bg-white rounded-lg shadow-xs border border-gray-200 transition-all duration-300 ${
           showLogs ? 'w-[20%]' : 'w-0 overflow-hidden'
         }`}
       >
@@ -206,7 +206,7 @@ export default function EligibilityChecker({
                 </div>
                 <div className="text-gray-500">{log.timestamp}</div>
                 {log.error && (
-                  <div className="text-red-600 text-[10px] mt-1 break-words">
+                  <div className="text-red-600 text-[10px] mt-1 wrap-break-word">
                     {log.error.substring(0, 100)}
                   </div>
                 )}

@@ -27,7 +27,7 @@ export default function ResponseDisplay({ request, response, error }: Props) {
       <>
         <div className="max-w-4xl mx-auto space-y-4">
           {/* Summary Section */}
-          <div className="p-6 bg-red-50 border border-red-200 rounded">
+          <div className="p-6 bg-red-50 border border-red-200 rounded-sm">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-red-800 font-semibold text-lg">Error</h3>
               <button
@@ -62,7 +62,7 @@ export default function ResponseDisplay({ request, response, error }: Props) {
     <>
       <div className="p-6 space-y-4">
         {/* Summary Header */}
-        <div className="bg-green-50 border border-green-200 rounded-lg shadow-sm p-4">
+        <div className="bg-green-50 border border-green-200 rounded-lg shadow-xs p-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
             <div>
               <h3 className="text-lg font-bold text-green-800">Eligibility Verification Complete</h3>
@@ -72,13 +72,13 @@ export default function ResponseDisplay({ request, response, error }: Props) {
             </div>
             <button
               onClick={() => setShowModal(true)}
-              className="px-3 py-1.5 text-xs sm:text-sm bg-blue-600 text-white rounded hover:bg-blue-700 whitespace-nowrap"
+              className="px-3 py-1.5 text-xs sm:text-sm bg-blue-600 text-white rounded-sm hover:bg-blue-700 whitespace-nowrap"
             >
               View Raw JSON
             </button>
           </div>
           {response.errors && response.errors.length > 0 && (
-            <div className="mt-3 p-2 bg-red-100 border border-red-300 rounded">
+            <div className="mt-3 p-2 bg-red-100 border border-red-300 rounded-sm">
               <p className="text-xs sm:text-sm font-medium text-red-800">
                 ⚠️ {response.errors.length} error(s) found - see details below
               </p>
